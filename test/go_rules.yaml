@@ -1,0 +1,15 @@
+conditions:
+  check_debug:
+    description: Check if debug function is called
+    check: |
+      function check_debug() {
+        return true;
+      }
+    true:
+      description: Call injected Go function
+      action: |
+        function check_debug_true() {
+          const result = add(2, 3);
+          debug(context, "Go function result: " + result);
+        }
+      terminate: true

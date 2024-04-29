@@ -1,0 +1,14 @@
+conditions:
+  check_update_context:
+    description: Check if context can be updated
+    check: |
+      function check_update_context() {
+        return true;
+      }
+    true:
+      description: Update the context
+      action: |
+        function check_update_context_true() {
+          context.Value = "Updated";
+        }
+      terminate: true
