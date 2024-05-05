@@ -58,7 +58,7 @@ func TestRunnerGoFunctions(t *testing.T) {
 		WithGoFunction[TestContext]("add", add))
 	assert.NoError(t, err)
 
-	_, err = runner.RunRules(&context, "check_debug")
+	_, err = runner.RunRules(&context, nil)
 	assert.NoError(t, err)
 
 	assert.Equal(t, "Go function result: 5", debugMessage)
@@ -71,7 +71,7 @@ func TestRunnerUpdateContext(t *testing.T) {
 	runner, err := NewRulesRunnerFromYaml("test/update_context.yaml", &context)
 	assert.NoError(t, err)
 
-	updatedContext, err := runner.RunRules(&context, "check_update_context")
+	updatedContext, err := runner.RunRules(&context, nil)
 	assert.NoError(t, err)
 
 	assert.Equal(t, "Updated", updatedContext.Value)
@@ -98,7 +98,7 @@ func TestRunner(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Run the rules
-	updatedContext, err := runner.RunRules(&context, "check_powder_protocols")
+	updatedContext, err := runner.RunRules(&context, nil)
 	assert.NoError(t, err)
 	assert.NotNil(t, updatedContext)
 

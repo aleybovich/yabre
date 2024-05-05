@@ -6,27 +6,49 @@ import (
 	"github.com/dop251/goja"
 )
 
+type Designation string
+
+const (
+	True  Designation = "true"
+	False Designation = "false"
+)
+
 type Condition struct {
-	Name        string `yaml:"name"`
-	Description string `yaml:"description"`
-	Check       string `yaml:"check"`
-	True        *struct {
-		Description string `yaml:"description"`
-		Action      string `yaml:"action"`
-		Next        string `yaml:"next"`
-		Terminate   bool   `yaml:"terminate"`
-	} `yaml:"true"`
-	False *struct {
-		Description string `yaml:"description"`
-		Action      string `yaml:"action"`
-		Next        string `yaml:"next"`
-		Terminate   bool   `yaml:"terminate"`
-	} `yaml:"false"`
+	Default     bool             `yaml:"default"`
+	Name        string           `yaml:"name"`
+	Description string           `yaml:"description"`
+	Check       string           `yaml:"check"`
+	True        *ConditionResult `yaml:"true"`
+	False       *ConditionResult `yaml:"false"`
+}
+
+type ConditionResult struct {
+	Name        string      `yaml:"-"`
+	Description string      `yaml:"description"`
+	Action      string      `yaml:"action"`
+	Next        string      `yaml:"next"`
+	Terminate   bool        `yaml:"terminate"`
+	Designation Designation `yaml:"-"` // true or false
+}
+
+func (cr *ConditionResult) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	type conditionResult ConditionResult // we need to create an intermediate type to avoid infinite recursion
+	var ccr conditionResult
+	if err := unmarshal(&ccr); err != nil {
+		return err
+	}
+
+	if ccr.Next != "" && ccr.Terminate {
+		return fmt.Errorf("next and terminate cannot be used together")
+	}
+
+	*cr = ConditionResult(ccr)
+	return nil
 }
 
 // Run the conditions recursively
-func (rr *RulesRunner[Context]) runCondition(vm *goja.Runtime, rules *Rules, condition *Condition) error {
-	fmt.Print("Running condition: ", condition.Name, "\n")
+func (runner *RulesRunner[Context]) runCondition(vm *goja.Runtime, rules *Rules, condition *Condition) error {
+	runner.DecisionCallback("Running condition: %s\n", condition.Name)
 
 	// Evaluate the check function
 	checkFunc, ok := goja.AssertFunction(vm.Get(condition.Name))
@@ -40,11 +62,11 @@ func (rr *RulesRunner[Context]) runCondition(vm *goja.Runtime, rules *Rules, con
 
 	if checkResult.ToBoolean() { // If check was true
 		if condition.True != nil {
-			fmt.Print("\tRunning TRUE check: ", condition.True.Description, "\n")
+			runner.DecisionCallback("\tRunning TRUE check: %s\n", condition.True.Description)
 			if condition.True.Action != "" {
 				// Run the action function
 				actionFuncName := condition.Name + "_true"
-				fmt.Print("\t\tRunning action function: ", actionFuncName, "\n")
+				runner.DecisionCallback("\t\tRunning action function: %s\n", actionFuncName)
 				actionFunc, ok := goja.AssertFunction(vm.Get(actionFuncName))
 				if !ok {
 					return fmt.Errorf("action function not found: %s", actionFuncName)
@@ -59,23 +81,23 @@ func (rr *RulesRunner[Context]) runCondition(vm *goja.Runtime, rules *Rules, con
 				if err != nil {
 					return fmt.Errorf("unexpected error: condition '%s' not found", condition.True.Next)
 				}
-				err = rr.runCondition(vm, rules, nextCondition)
+				err = runner.runCondition(vm, rules, nextCondition)
 				if err != nil {
 					return fmt.Errorf("error while running condition '%s': %v", condition.True.Next, err)
 				}
 			}
 			if condition.True.Terminate {
-				fmt.Print("Terminating\n")
+				runner.DecisionCallback("Terminating\n")
 				return nil
 			}
 		}
 	} else { // if check was false
 		if condition.False != nil {
-			fmt.Print("\tRunning FALSE check: ", condition.False.Description, "\n")
+			runner.DecisionCallback("\tRunning FALSE check: %s\n", condition.False.Description)
 			if condition.False.Action != "" {
 				// Run the action function
 				actionFuncName := condition.Name + "_false"
-				fmt.Print("\t\tRunning action function: ", actionFuncName, "\n")
+				runner.DecisionCallback("\t\tRunning action function: %s\n", actionFuncName)
 				actionFunc, ok := goja.AssertFunction(vm.Get(actionFuncName))
 				if !ok {
 					return fmt.Errorf("action function not found: %s", actionFuncName)
@@ -91,13 +113,13 @@ func (rr *RulesRunner[Context]) runCondition(vm *goja.Runtime, rules *Rules, con
 					return fmt.Errorf("unexpected error: condition '%s' not found", condition.False.Next)
 				}
 
-				err = rr.runCondition(vm, rules, nextCondition)
+				err = runner.runCondition(vm, rules, nextCondition)
 				if err != nil {
 					return fmt.Errorf("error while running condition '%s': %v", condition.False.Next, err)
 				}
 			}
 			if condition.False.Terminate {
-				fmt.Print("Terminating\n")
+				runner.DecisionCallback("Terminating\n")
 				return nil
 			}
 		}
@@ -107,10 +129,9 @@ func (rr *RulesRunner[Context]) runCondition(vm *goja.Runtime, rules *Rules, con
 }
 
 func findConditionByName(rule *Rules, name string) (*Condition, error) {
-	for _, condition := range rule.Conditions {
-		if condition.Name == name {
-			return &condition, nil
-		}
+	if condition, ok := rule.Conditions[name]; ok {
+		return &condition, nil
 	}
+
 	return nil, fmt.Errorf("Condition not found: %s", name)
 }

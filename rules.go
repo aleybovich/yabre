@@ -9,47 +9,48 @@ import (
 )
 
 type Rules struct {
-	Conditions map[string]Condition `yaml:"conditions"`
+	Conditions       map[string]Condition `yaml:"conditions"`
+	DefaultCondition *Condition           `yaml:"-"`
 }
 
-func (rr *RulesRunner[Context]) RunRules(context *Context, startCondition string) (*Context, error) {
-	rules := rr.Rules
-	vm := goja.New()
-
-	// Add context to vm
-	vm.Set("context", *context)
-
-	// Add debug function to vm
-	if rr.DebugCallback != nil {
-		vm.Set("debug", rr.DebugCallback)
+func (r *Rules) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	type rules Rules // we need to create an intermediate type to avoid infinite recursion
+	var rr rules
+	if err := unmarshal(&rr); err != nil {
+		return err
 	}
 
-	// Add go functions to vm
-	if rr.GoFunctions != nil {
-		for name, f := range rr.GoFunctions {
-			vm.Set(name, f)
+	defaultFound := false
+
+	// add names to conditions
+	// and find the default condition
+	for name, condition := range rr.Conditions {
+		condition.Name = name
+
+		if condition.True != nil {
+			condition.True.Name = condition.Name + "_true"
+			condition.True.Designation = True
+		}
+
+		if condition.False != nil {
+			condition.False.Name = condition.Name + "_false"
+			condition.False.Designation = False
+		}
+
+		rr.Conditions[name] = condition
+
+		if condition.Default {
+			if !defaultFound {
+				rr.DefaultCondition = &condition
+				defaultFound = true
+			} else {
+				return fmt.Errorf("multiple default conditions found")
+			}
 		}
 	}
 
-	// Add all js functions to the vm
-	err := rr.addJsFunctions(vm)
-	if err != nil {
-		return nil, err
-	}
-
-	// Start running the conditions from the first condition
-	condition, err := findConditionByName(rules, startCondition)
-	if err != nil {
-		return nil, err
-	}
-
-	// Start running the conditions from the first condition
-	err = rr.runCondition(vm, rules, condition)
-
-	// Get the updated context
-	*context = vm.Get("context").ToObject(vm).Export().(Context)
-
-	return context, err
+	*r = Rules(rr)
+	return nil
 }
 
 func (rr *RulesRunner[Context]) loadRulesFromYaml(fileName string) (*Rules, error) {
@@ -65,11 +66,7 @@ func (rr *RulesRunner[Context]) loadRulesFromYaml(fileName string) (*Rules, erro
 		return nil, fmt.Errorf("error parsing YAML: %v", err)
 	}
 
-	// add names to conditions from the Rule map
-	for name, condition := range rules.Conditions {
-		condition.Name = name
-		rules.Conditions[name] = condition
-	}
+	// Now unmarshal the same yaml into an ordered list to get the first condition
 
 	return &rules, nil
 }
