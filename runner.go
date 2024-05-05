@@ -1,4 +1,4 @@
-package main
+package yabre
 
 import (
 	"fmt"
@@ -7,11 +7,14 @@ import (
 )
 
 type RulesRunner[Context interface{}] struct {
-	Rules            *Rules
-	Context          *Context
-	DebugCallback    func(Context, interface{})
-	GoFunctions      map[string]func(...interface{}) (interface{}, error)
+	Rules         *Rules
+	Context       *Context
+	debugCallback func(Context, interface{})
+	goFunctions   map[string]func(...interface{}) (interface{}, error)
+	// callback to be called when a decision is made
 	decisionCallback func(msg string, args ...interface{})
+	// mapping of js functions in business rules to standard names
+	functionNames map[string]string
 }
 
 type WithOption[Context interface{}] func(*RulesRunner[Context])
@@ -19,16 +22,16 @@ type WithOption[Context interface{}] func(*RulesRunner[Context])
 // WithDebugCallback sets the DebugCallback option
 func WithDebugCallback[Context interface{}](callback func(Context, interface{})) WithOption[Context] {
 	return func(runner *RulesRunner[Context]) {
-		runner.DebugCallback = callback
+		runner.debugCallback = callback
 	}
 }
 
 func WithGoFunction[Context interface{}](name string, f func(...interface{}) (interface{}, error)) WithOption[Context] {
 	return func(runner *RulesRunner[Context]) {
-		if runner.GoFunctions == nil {
-			runner.GoFunctions = make(map[string]func(...interface{}) (interface{}, error))
+		if runner.goFunctions == nil {
+			runner.goFunctions = make(map[string]func(...interface{}) (interface{}, error))
 		}
-		runner.GoFunctions[name] = f
+		runner.goFunctions[name] = f
 	}
 }
 
@@ -38,14 +41,19 @@ func WithDecisionCallback[Context interface{}](callback func(msg string, args ..
 	}
 }
 
-func (runner *RulesRunner[Context]) DecisionCallback(msg string, args ...interface{}) {
-	if runner.decisionCallback != nil {
-		runner.decisionCallback(msg, args...)
+func (runner *RulesRunner[Context]) getFunctionName(name string) string {
+	if functionName, ok := runner.functionNames[name]; ok {
+		return functionName
 	}
+	return name
 }
 
 func NewRulesRunnerFromYaml[Context interface{}](fileName string, context *Context, options ...WithOption[Context]) (*RulesRunner[Context], error) {
-	rr := &RulesRunner[Context]{Context: context}
+	rr := &RulesRunner[Context]{
+		Context:          context,
+		functionNames:    map[string]string{},
+		decisionCallback: func(msg string, args ...interface{}) {}, // empty by default
+	}
 
 	// Execute options
 	for _, op := range options {
@@ -70,13 +78,13 @@ func (rr *RulesRunner[Context]) RunRules(context *Context, startCondition *Condi
 	vm.Set("context", *context)
 
 	// Add debug function to vm
-	if rr.DebugCallback != nil {
-		vm.Set("debug", rr.DebugCallback)
+	if rr.debugCallback != nil {
+		vm.Set("debug", rr.debugCallback)
 	}
 
 	// Add go functions to vm
-	if rr.GoFunctions != nil {
-		for name, f := range rr.GoFunctions {
+	if rr.goFunctions != nil {
+		for name, f := range rr.goFunctions {
 			vm.Set(name, f)
 		}
 	}

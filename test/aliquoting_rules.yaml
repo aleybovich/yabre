@@ -3,14 +3,14 @@ conditions:
     default: true
     description: Check if there are any powder protocols among the products.
     check: |
-      function check_powder_protocols() {
+      function () {
         if (debug) ( debug(context, "I'm in check_powder_protocols") )
         return context.OrderItems.find(p => p.ProductType === 'powder') !== undefined;
       }
     true:
       description: Fail all powder products and their corresponding order items.
       action: |
-        function check_powder_protocols_true() {
+        function () {
           const powderOrderItems = context.OrderItems.filter(p => p.ProductType === 'powder');
           powderOrderItems.forEach(p => {
             p.State = 'fail';
@@ -26,7 +26,7 @@ conditions:
   check_mixed_solvents:
     description: Check if there are mixed solvents or concentrations among the solution order items.
     check: |
-      function check_mixed_solvents() {
+      function () {
         const pendingOrderItems = context.OrderItems.filter(oi => oi.State === 'pending');
         const primaryOrderItem = pendingOrderItems.find(oi => oi.OrderType === 'primary');
         const earlySolutionOrderItems = pendingOrderItems.filter(oi => oi.OrderType !== 'primary' && oi.ProductType === 'solution');
@@ -35,7 +35,7 @@ conditions:
     true:
       description: Fail order items and products with mixed solvents or concentrations.
       action: |
-        function check_mixed_solvents_true() {
+        function () {
           const pendingOrderItems = context.OrderItems.filter(oi => oi.State === 'pending');
           const primaryOrderItem = pendingOrderItems.find(oi => oi.OrderType === 'primary');
           const failedOrderItems = pendingOrderItems.filter(oi => oi.OrderType !== 'primary' && (oi.Solvant !== primaryOrderItem.Solvant || oi.Concentration !== primaryOrderItem.Concentration));
@@ -49,7 +49,7 @@ conditions:
   check_overflow:
     description: Check if the total required amount exceeds the container amount.
     check: |
-      function check_overflow() {
+      function () {
         const pendingOrderItems = context.OrderItems.filter(oi => oi.State === 'pending');
         const totalRequiredAmount = pendingOrderItems.reduce((sum, oi) => sum + oi.Amount, 0);
         return totalRequiredAmount > context.Container.Amount;
@@ -57,7 +57,7 @@ conditions:
     true:
       description: Fail all products and order items due to container overflow.
       action: |
-        function check_overflow_true() {
+        function () {
           context.Products.forEach(p => p.State = 'fail');
           context.OrderItems.forEach(oi => oi.State = 'fail');
         }
@@ -67,7 +67,7 @@ conditions:
   check_amount_less_than_required:
     description: Check if the actual amount is less than the required amount.
     check: |
-      function check_amount_less_than_required() {
+      function () {
         const pendingOrderItems = context.OrderItems.filter(oi => oi.State === 'pending');
         const totalRequiredAmount = pendingOrderItems.reduce((sum, oi) => sum + oi.Amount, 0);
         const diff = context.Container.Amount - totalRequiredAmount;
@@ -76,7 +76,7 @@ conditions:
     true:
       description: Fail the lowest-ranked order items and their corresponding products until the remaining amount can be fulfilled.
       action: |
-        function check_amount_less_than_required_true() {
+        function () {
           const pendingOrderItems = context.OrderItems.filter(oi => oi.State === 'pending');
           const totalRequiredAmount = pendingOrderItems.reduce((sum, oi) => sum + oi.Amount, 0);
           const diff = context.Container.Amount - totalRequiredAmount;
@@ -99,7 +99,7 @@ conditions:
   check_amount_equal_to_required:
     description: Check if the actual amount is equal to the required amount.
     check: |
-      function check_amount_equal_to_required() {
+      function () {
         const pendingOrderItems = context.OrderItems.filter(oi => oi.State === 'pending');
         const totalRequiredAmount = pendingOrderItems.reduce((sum, oi) => sum + oi.Amount, 0);
         const diff = context.Container.Amount - totalRequiredAmount;
@@ -112,7 +112,7 @@ conditions:
   check_amount_more_than_required:
     description: Check if the actual amount is more than the required amount.
     check: |
-      function check_amount_more_than_required() {
+      function () {
         const pendingOrderItems = context.OrderItems.filter(oi => oi.State === 'pending');
         const totalRequiredAmount = pendingOrderItems.reduce((sum, oi) => sum + oi.Amount, 0);
         return context.Container.Amount - totalRequiredAmount > 0;
@@ -124,7 +124,7 @@ conditions:
   check_leftovers:
     description: Check if there are any non-consumed leftovers.
     check: |
-      function check_leftovers() {
+      function () {
         const pendingOrderItems = context.OrderItems.filter(oi => oi.State === 'pending');
         return context.Container.Amount > pendingOrderItems.reduce((sum, oi) => sum + oi.Amount, 0);
       }
@@ -135,7 +135,7 @@ conditions:
   check_remainder_less_than_50:
     description: Check if the remainder is less than 50 μl.
     check: |
-      function check_remainder_less_than_50() {
+      function () {
         const pendingOrderItems = context.OrderItems.filter(oi => oi.State === 'pending');
         const totalRequiredAmount = pendingOrderItems.reduce((sum, oi) => sum + oi.Amount, 0);
         const remainder = context.Container.Amount - totalRequiredAmount;
@@ -148,7 +148,7 @@ conditions:
   check_remainder_between_50_and_950:
     description: Check if the remainder is between 50 μl and 950 μl.
     check: |
-      function check_remainder_between_50_and_950() {
+      function () {
         const pendingOrderItems = context.OrderItems.filter(oi => oi.State === 'pending');
         const totalRequiredAmount = pendingOrderItems.reduce((sum, oi) => sum + oi.Amount, 0);
         const remainder = context.Container.Amount - totalRequiredAmount;
@@ -157,7 +157,7 @@ conditions:
     true:
       description: Create a spare tube with the remaining amount.
       action: |
-        function check_remainder_between_50_and_950_true() {
+        function () {
           const pendingOrderItems = context.OrderItems.filter(oi => oi.State === 'pending');
           const remainder = context.Container.Amount - pendingOrderItems.reduce((sum, oi) => sum + oi.Amount, 0);
           const newProduct = {
@@ -175,7 +175,7 @@ conditions:
   check_remainder_between_950_and_1800:
     description: Check if the remainder is between 950 μl and 1800 μl.
     check: |
-      function check_remainder_between_950_and_1800() {
+      function () {
         const pendingOrderItems = context.OrderItems.filter(oi => oi.State === 'pending');
         const totalRequiredAmount = pendingOrderItems.reduce((sum, oi) => sum + oi.Amount, 0);
         const remainder = context.Container.Amount - totalRequiredAmount;
@@ -184,7 +184,7 @@ conditions:
     true:
       description: Create two spare tubes, one with 900 μl and another with the remaining amount.
       action: |
-        function check_remainder_between_950_and_1800_true() {
+        function () {
           const pendingOrderItems = context.OrderItems.filter(oi => oi.State === 'pending');
           const remainder = context.Container.Amount - pendingOrderItems.reduce((sum, oi) => sum + oi.Amount, 0);
           const newProduct1 = {
@@ -207,7 +207,7 @@ conditions:
     false:
       description: Fail all order items with comment
       action: |
-        function check_remainder_between_950_and_1800_false() {
+        function () {
           pendingOrderItems = context.OrderItems.filter(oi => oi.State === 'pending');
           pendingOrderItems.forEach(ppi => ppi.State = "fail")
           context.Products = []

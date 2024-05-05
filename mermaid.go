@@ -1,4 +1,4 @@
-package main
+package yabre
 
 import (
 	"fmt"
@@ -53,42 +53,42 @@ func ExportMermaid(yamlString []byte, defaultConditionName string) (string, erro
 
 func renderCondition(condition *Condition, mermaid *strings.Builder) error {
 	if condition.True != nil {
-		renderConditionResult(condition, condition.True, mermaid)
+		renderDecision(condition, condition.True, mermaid)
 	}
 	if condition.False != nil {
-		renderConditionResult(condition, condition.False, mermaid)
+		renderDecision(condition, condition.False, mermaid)
 	}
 
 	return nil
 }
 
-func renderConditionResult(
+func renderDecision(
 	condition *Condition,
-	conditionResult *ConditionResult,
+	decision *Decision,
 	mermaid *strings.Builder) error {
 
-	if conditionResult.Action != "" {
+	if decision.Action != "" {
 		// connection from condition to True/False action
-		mermaid.WriteString(fmt.Sprintf("    %s --> |%s| %s\n", condition.Name, conditionResult.Designation, conditionResult.Name))
+		mermaid.WriteString(fmt.Sprintf("    %s --> |%t| %s\n", condition.Name, decision.Value, decision.Name))
 
-		if conditionResult.Next != "" {
+		if decision.Next != "" {
 			// connection from True/False action to next condition
-			mermaid.WriteString(fmt.Sprintf("    %s --> %s\n", conditionResult.Name, conditionResult.Next))
+			mermaid.WriteString(fmt.Sprintf("    %s --> %s\n", decision.Name, decision.Next))
 		}
 
-		if conditionResult.Terminate {
+		if decision.Terminate {
 			// terminator from True/False action
-			mermaid.WriteString(fmt.Sprintf("    %s --> %s_end\n", conditionResult.Name, conditionResult.Name))
+			mermaid.WriteString(fmt.Sprintf("    %s --> %s_end\n", decision.Name, decision.Name))
 		}
 	} else {
-		if conditionResult.Next != "" {
+		if decision.Next != "" {
 			// connection from condition to next condition
-			mermaid.WriteString(fmt.Sprintf("    %s --> |%s| %s\n", condition.Name, conditionResult.Designation, conditionResult.Next))
+			mermaid.WriteString(fmt.Sprintf("    %s --> |%t| %s\n", condition.Name, decision.Value, decision.Next))
 		}
 
-		if conditionResult.Terminate {
+		if decision.Terminate {
 			// terminator from condition
-			mermaid.WriteString(fmt.Sprintf("    %s --> |%s| %s_end\n", condition.Name, conditionResult.Designation, conditionResult.Name))
+			mermaid.WriteString(fmt.Sprintf("    %s --> |%t| %s_end\n", condition.Name, decision.Value, decision.Name))
 		}
 	}
 	return nil

@@ -1,7 +1,8 @@
-package main
+package yabre
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -91,9 +92,19 @@ func TestRunner(t *testing.T) {
 
 	var debugData interface{}
 
-	runner, err := NewRulesRunnerFromYaml("test/aliquoting_rules.yaml", &context, WithDebugCallback(
-		func(ctx RecipeContext, data interface{}) {
-			debugData = data
+	decisions := []string{}
+
+	runner, err := NewRulesRunnerFromYaml(
+		"test/aliquoting_rules.yaml",
+		&context,
+		WithDebugCallback(
+			func(ctx RecipeContext, data interface{}) {
+				debugData = data
+			}),
+		WithDecisionCallback[RecipeContext](func(msg string, args ...interface{}) {
+			msg = fmt.Sprintf(msg, args...)
+			fmt.Print(msg)
+			decisions = append(decisions, strings.TrimLeft(strings.TrimRight(msg, "\n"), "\t"))
 		}))
 	assert.NoError(t, err)
 
@@ -110,4 +121,30 @@ func TestRunner(t *testing.T) {
 
 	// Check the updated context
 	assert.Equal(t, 2, len(updatedContext.Products))
+	assert.Equal(t, 900, updatedContext.Products[0].Amount)
+	assert.Equal(t, 400, updatedContext.Products[1].Amount)
+
+	expectedDecisions := []string{
+		"Running condition: [check_powder_protocols] Check if there are any powder protocols among the products.",
+		"Running action: [check_powder_protocols_true] Fail all powder products and their corresponding order items.",
+		"Moving to next condition: check_mixed_solvents",
+		"Running condition: [check_mixed_solvents] Check if there are mixed solvents or concentrations among the solution order items.",
+		"Moving to next condition: check_overflow",
+		"Running condition: [check_overflow] Check if the total required amount exceeds the container amount.",
+		"Moving to next condition: check_amount_less_than_required",
+		"Running condition: [check_amount_less_than_required] Check if the actual amount is less than the required amount.",
+		"Moving to next condition: check_amount_equal_to_required",
+		"Running condition: [check_amount_equal_to_required] Check if the actual amount is equal to the required amount.",
+		"Moving to next condition: check_amount_more_than_required",
+		"Running condition: [check_amount_more_than_required] Check if the actual amount is more than the required amount.",
+		"Moving to next condition: check_remainder_less_than_50",
+		"Running condition: [check_remainder_less_than_50] Check if the remainder is less than 50 μl.",
+		"Moving to next condition: check_remainder_between_50_and_950",
+		"Running condition: [check_remainder_between_50_and_950] Check if the remainder is between 50 μl and 950 μl.",
+		"Moving to next condition: check_remainder_between_950_and_1800",
+		"Running condition: [check_remainder_between_950_and_1800] Check if the remainder is between 950 μl and 1800 μl.",
+		"Running action: [check_remainder_between_950_and_1800_true] Create two spare tubes, one with 900 μl and another with the remaining amount.",
+		"Terminating",
+	}
+	assert.Equal(t, expectedDecisions, decisions)
 }
