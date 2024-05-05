@@ -2,7 +2,6 @@ package yabre
 
 import (
 	"fmt"
-	"os"
 	"regexp"
 
 	"github.com/dop251/goja"
@@ -14,6 +13,7 @@ type Rules struct {
 	DefaultCondition *Condition           `yaml:"-"`
 }
 
+// Perform enrichment and validation of rules data during unmarshaling
 func (r *Rules) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	type rules Rules // we need to create an intermediate type to avoid infinite recursion
 	var rr rules
@@ -54,15 +54,10 @@ func (r *Rules) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	return nil
 }
 
-func (rr *RulesRunner[Context]) loadRulesFromYaml(fileName string) (*Rules, error) {
-	yamlFile, err := os.ReadFile(fileName)
-	if err != nil {
-		return nil, fmt.Errorf("error reading YAML file: %v", err)
-	}
-
+func (rr *RulesRunner[Context]) loadRulesFromYaml(yamlFile []byte) (*Rules, error) {
 	// Parse the YAML into a Rule struct
 	var rules Rules
-	err = yaml.Unmarshal(yamlFile, &rules)
+	err := yaml.Unmarshal(yamlFile, &rules)
 	if err != nil {
 		return nil, fmt.Errorf("error parsing YAML: %v", err)
 	}

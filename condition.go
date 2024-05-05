@@ -41,7 +41,7 @@ func (cr *Decision) UnmarshalYAML(unmarshal func(interface{}) error) error {
 
 // Run the conditions recursively
 func (runner *RulesRunner[Context]) runCondition(vm *goja.Runtime, rules *Rules, condition *Condition) error {
-	runner.decisionCallback("Running condition: [%s] %s\n", condition.Name, condition.Description)
+	runner.decisionCallback("Evaluating condition: [%s] %s\n", condition.Name, condition.Description)
 
 	// Get the custom function name for the check function
 	checkFuncName := runner.getFunctionName(condition.Name)
@@ -57,12 +57,16 @@ func (runner *RulesRunner[Context]) runCondition(vm *goja.Runtime, rules *Rules,
 	}
 
 	if checkResult.ToBoolean() {
+		runner.decisionCallback("Condition [%s] evaluated to [true]\n", condition.Name)
 		if condition.True == nil {
+			runner.decisionCallback("No action or next condition defined, terminating")
 			return nil
 		}
 		return runner.runAction(vm, rules, condition.True)
 	} else {
+		runner.decisionCallback("Condition [%s] evaluated to [false]\n", condition.Name)
 		if condition.False == nil {
+			runner.decisionCallback("No action or next condition defined, terminating")
 			return nil
 		}
 		return runner.runAction(vm, rules, condition.False)
@@ -73,7 +77,7 @@ func (runner *RulesRunner[Context]) runCondition(vm *goja.Runtime, rules *Rules,
 func (runner *RulesRunner[Context]) runAction(vm *goja.Runtime, rules *Rules, result *Decision) error {
 	if result.Action != "" {
 		actionFuncName := runner.getFunctionName(result.Name)
-		runner.decisionCallback("\tRunning action: [%s] %s\n", actionFuncName, result.Description)
+		runner.decisionCallback("Running action: [%s] %s\n", actionFuncName, result.Description)
 		actionFunc, ok := goja.AssertFunction(vm.Get(actionFuncName))
 		if !ok {
 			return fmt.Errorf("action function not found: %s", actionFuncName)
@@ -89,10 +93,10 @@ func (runner *RulesRunner[Context]) runAction(vm *goja.Runtime, rules *Rules, re
 		if err != nil {
 			return fmt.Errorf("unexpected error: condition '%s' not found", result.Next)
 		}
-		runner.decisionCallback("\tMoving to next condition: %s\n", nextCondition.Name)
+		runner.decisionCallback("Moving to next condition:[%s]\n", nextCondition.Name)
 		err = runner.runCondition(vm, rules, nextCondition)
 		if err != nil {
-			return fmt.Errorf("error while running condition '%s': %v", result.Next, err)
+			return fmt.Errorf("error while evaluating condition '%s': %v", result.Next, err)
 		}
 	}
 

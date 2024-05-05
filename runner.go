@@ -48,26 +48,26 @@ func (runner *RulesRunner[Context]) getFunctionName(name string) string {
 	return name
 }
 
-func NewRulesRunnerFromYaml[Context interface{}](fileName string, context *Context, options ...WithOption[Context]) (*RulesRunner[Context], error) {
-	rr := &RulesRunner[Context]{
+func NewRulesRunnerFromYaml[Context interface{}](yamlData []byte, context *Context, options ...WithOption[Context]) (*RulesRunner[Context], error) {
+	runner := &RulesRunner[Context]{
 		Context:          context,
 		functionNames:    map[string]string{},
-		decisionCallback: func(msg string, args ...interface{}) {}, // empty by default
+		decisionCallback: func(msg string, args ...interface{}) {},
 	}
 
 	// Execute options
 	for _, op := range options {
-		op(rr)
+		op(runner)
 	}
 
-	// Load the rules from the YAML file
-	rules, err := rr.loadRulesFromYaml(fileName)
+	// Load the rules from the YAML data
+	rules, err := runner.loadRulesFromYaml(yamlData)
 	if err != nil {
 		return nil, err
 	}
-	rr.Rules = rules
+	runner.Rules = rules
 
-	return rr, nil
+	return runner, nil
 }
 
 func (rr *RulesRunner[Context]) RunRules(context *Context, startCondition *Condition) (*Context, error) {

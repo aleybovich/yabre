@@ -2,6 +2,7 @@ package yabre
 
 import (
 	"fmt"
+	"os"
 	"strings"
 	"testing"
 
@@ -51,7 +52,9 @@ func TestRunnerGoFunctions(t *testing.T) {
 		return res, nil
 	}
 
-	runner, err := NewRulesRunnerFromYaml("test/go_rules.yaml", &context,
+	yamlData, err := loadYaml("test/go_rules.yaml")
+	assert.NoError(t, err)
+	runner, err := NewRulesRunnerFromYaml(yamlData, &context,
 		WithDebugCallback(
 			func(ctx TestContext, data interface{}) {
 				debugMessage = fmt.Sprintf("%v", data)
@@ -69,7 +72,9 @@ func TestRunnerUpdateContext(t *testing.T) {
 	type TestContext struct{ Value string }
 	context := TestContext{Value: "Initial"}
 
-	runner, err := NewRulesRunnerFromYaml("test/update_context.yaml", &context)
+	yamlData, err := loadYaml("test/update_context.yaml")
+	assert.NoError(t, err)
+	runner, err := NewRulesRunnerFromYaml(yamlData, &context)
 	assert.NoError(t, err)
 
 	updatedContext, err := runner.RunRules(&context, nil)
@@ -94,8 +99,10 @@ func TestRunner(t *testing.T) {
 
 	decisions := []string{}
 
+	yamlData, err := loadYaml("test/aliquoting_rules.yaml")
+	assert.NoError(t, err)
 	runner, err := NewRulesRunnerFromYaml(
-		"test/aliquoting_rules.yaml",
+		yamlData,
 		&context,
 		WithDebugCallback(
 			func(ctx RecipeContext, data interface{}) {
@@ -125,26 +132,44 @@ func TestRunner(t *testing.T) {
 	assert.Equal(t, 400, updatedContext.Products[1].Amount)
 
 	expectedDecisions := []string{
-		"Running condition: [check_powder_protocols] Check if there are any powder protocols among the products.",
+		"Evaluating condition: [check_powder_protocols] Check if there are any powder protocols among the products.",
+		"Condition [check_powder_protocols] evaluated to [true]",
 		"Running action: [check_powder_protocols_true] Fail all powder products and their corresponding order items.",
-		"Moving to next condition: check_mixed_solvents",
-		"Running condition: [check_mixed_solvents] Check if there are mixed solvents or concentrations among the solution order items.",
-		"Moving to next condition: check_overflow",
-		"Running condition: [check_overflow] Check if the total required amount exceeds the container amount.",
-		"Moving to next condition: check_amount_less_than_required",
-		"Running condition: [check_amount_less_than_required] Check if the actual amount is less than the required amount.",
-		"Moving to next condition: check_amount_equal_to_required",
-		"Running condition: [check_amount_equal_to_required] Check if the actual amount is equal to the required amount.",
-		"Moving to next condition: check_amount_more_than_required",
-		"Running condition: [check_amount_more_than_required] Check if the actual amount is more than the required amount.",
-		"Moving to next condition: check_remainder_less_than_50",
-		"Running condition: [check_remainder_less_than_50] Check if the remainder is less than 50 μl.",
-		"Moving to next condition: check_remainder_between_50_and_950",
-		"Running condition: [check_remainder_between_50_and_950] Check if the remainder is between 50 μl and 950 μl.",
-		"Moving to next condition: check_remainder_between_950_and_1800",
-		"Running condition: [check_remainder_between_950_and_1800] Check if the remainder is between 950 μl and 1800 μl.",
+		"Moving to next condition:[check_mixed_solvents]",
+		"Evaluating condition: [check_mixed_solvents] Check if there are mixed solvents or concentrations among the solution order items.",
+		"Condition [check_mixed_solvents] evaluated to [false]",
+		"Moving to next condition:[check_overflow]",
+		"Evaluating condition: [check_overflow] Check if the total required amount exceeds the container amount.",
+		"Condition [check_overflow] evaluated to [false]",
+		"Moving to next condition:[check_amount_less_than_required]",
+		"Evaluating condition: [check_amount_less_than_required] Check if the actual amount is less than the required amount.",
+		"Condition [check_amount_less_than_required] evaluated to [false]",
+		"Moving to next condition:[check_amount_equal_to_required]",
+		"Evaluating condition: [check_amount_equal_to_required] Check if the actual amount is equal to the required amount.",
+		"Condition [check_amount_equal_to_required] evaluated to [false]",
+		"Moving to next condition:[check_amount_more_than_required]",
+		"Evaluating condition: [check_amount_more_than_required] Check if the actual amount is more than the required amount.",
+		"Condition [check_amount_more_than_required] evaluated to [true]",
+		"Moving to next condition:[check_remainder_less_than_50]",
+		"Evaluating condition: [check_remainder_less_than_50] Check if the remainder is less than 50 μl.",
+		"Condition [check_remainder_less_than_50] evaluated to [false]",
+		"Moving to next condition:[check_remainder_between_50_and_950]",
+		"Evaluating condition: [check_remainder_between_50_and_950] Check if the remainder is between 50 μl and 950 μl.",
+		"Condition [check_remainder_between_50_and_950] evaluated to [false]",
+		"Moving to next condition:[check_remainder_between_950_and_1800]",
+		"Evaluating condition: [check_remainder_between_950_and_1800] Check if the remainder is between 950 μl and 1800 μl.",
+		"Condition [check_remainder_between_950_and_1800] evaluated to [true]",
 		"Running action: [check_remainder_between_950_and_1800_true] Create two spare tubes, one with 900 μl and another with the remaining amount.",
 		"Terminating",
 	}
 	assert.Equal(t, expectedDecisions, decisions)
+}
+
+func loadYaml(fileName string) ([]byte, error) {
+	yamlFile, err := os.ReadFile(fileName)
+	if err != nil {
+		return nil, fmt.Errorf("error reading YAML file: %v", err)
+	}
+
+	return yamlFile, nil
 }

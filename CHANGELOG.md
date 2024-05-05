@@ -1,3 +1,8 @@
+[0.3.0]
+- Changed: Rules runner constructor accepts yaml byte array instead of yaml file name
+- Changed: Updated README to include a section about Mermaid conversion functionality
+- Changed: more verbose decision callbacks
+
 [0.2.0]
 - Added: `ExportMermaid` function accepts business rules in YAML and returns Mermaid code to display the rules in a flow disagram
 - Added: `WithDecisionCallback` option in RulesRunner constructor; when provided, used to receive the decision steps from rules engine; to be used for rules troubleshooting or audit 
