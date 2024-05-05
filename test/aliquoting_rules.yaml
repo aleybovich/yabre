@@ -1,5 +1,6 @@
 conditions:
   check_powder_protocols:
+    default: true
     description: Check if there are any powder protocols among the products.
     check: |
       function check_powder_protocols() {

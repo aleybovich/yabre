@@ -1,5 +1,6 @@
 conditions:
   check_update_context:
+    default: true
     description: Check if context can be updated
     check: |
       function check_update_context() {

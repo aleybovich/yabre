@@ -1,5 +1,6 @@
 conditions:
   check_debug:
+    default: true
     description: Check if debug function is called
     check: |
       function check_debug() {
