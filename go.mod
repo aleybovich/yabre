@@ -1,4 +1,4 @@
-module yabre
+module github.com/aleybovich/yabre
 
 go 1.22.2
 
