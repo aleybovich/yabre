@@ -1,8 +1,9 @@
-package main
+package yabre
 
 import (
 	"fmt"
 	"os"
+	"regexp"
 
 	"github.com/dop251/goja"
 	"gopkg.in/yaml.v2"
@@ -29,12 +30,12 @@ func (r *Rules) UnmarshalYAML(unmarshal func(interface{}) error) error {
 
 		if condition.True != nil {
 			condition.True.Name = condition.Name + "_true"
-			condition.True.Designation = True
+			condition.True.Value = true
 		}
 
 		if condition.False != nil {
 			condition.False.Name = condition.Name + "_false"
-			condition.False.Designation = False
+			condition.False.Value = false
 		}
 
 		rr.Conditions[name] = condition
@@ -71,27 +72,45 @@ func (rr *RulesRunner[Context]) loadRulesFromYaml(fileName string) (*Rules, erro
 	return &rules, nil
 }
 
-func (rr *RulesRunner[Context]) addJsFunctions(vm *goja.Runtime) error {
+func (runner *RulesRunner[Context]) addJsFunctions(vm *goja.Runtime) error {
 	// add all js functions to the vm
-	for _, condition := range rr.Rules.Conditions {
+	for _, condition := range runner.Rules.Conditions {
 		if condition.Check != "" {
-			_, err := vm.RunString(condition.Check)
-			if err != nil {
-				return fmt.Errorf("error injecting check function into vm: %v", err)
+			checkName := condition.Name
+			if err := runner.injectJSFunction(vm, checkName, condition.Check); err != nil {
+				return fmt.Errorf("error injecting condition function into vm: %v", err)
 			}
 		}
 		if condition.True != nil && condition.True.Action != "" {
-			_, err := vm.RunString(condition.True.Action)
-			if err != nil {
+			actionName := fmt.Sprintf("%s_%t", condition.Name, condition.True.Value)
+			if err := runner.injectJSFunction(vm, actionName, condition.True.Action); err != nil {
 				return fmt.Errorf("error injecting action function into vm: %v", err)
 			}
 		}
 		if condition.False != nil && condition.False.Action != "" {
-			_, err := vm.RunString(condition.False.Action)
-			if err != nil {
+			actionName := fmt.Sprintf("%s_%t", condition.Name, condition.False.Value)
+			if err := runner.injectJSFunction(vm, actionName, condition.True.Action); err != nil {
 				return fmt.Errorf("error injecting action function into vm: %v", err)
 			}
 		}
+	}
+
+	return nil
+}
+
+func (runner *RulesRunner[Context]) injectJSFunction(vm *goja.Runtime, defaultName, funcCode string) error {
+	funcName := defaultName
+
+	re := regexp.MustCompile(`function\s+(\w+)\s*\(`)
+	matches := re.FindStringSubmatch(funcCode)
+	if len(matches) > 1 {
+		funcName = matches[1]
+	}
+
+	runner.functionNames[defaultName] = funcName // Store the function name mapping
+	_, err := vm.RunString(fmt.Sprintf("%s = %s", funcName, funcCode))
+	if err != nil {
+		return fmt.Errorf("error injecting function into vm: %v", err)
 	}
 
 	return nil
