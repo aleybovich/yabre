@@ -1,3 +1,6 @@
+[0.4.0]
+- Changed: fixed module name
+
 [0.3.0]
 - Changed: Rules runner constructor accepts yaml byte array instead of yaml file name
 - Changed: Updated README to include a section about Mermaid conversion functionality
