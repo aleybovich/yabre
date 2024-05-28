@@ -21,10 +21,10 @@ func ExportMermaid(yamlString []byte, defaultConditionName string) (string, erro
 
 	// Declare all elements
 	for _, condition := range rules.Conditions {
-		mermaid.WriteString(fmt.Sprintf("    %s{\"`%s`\"}\n", condition.Name, condition.Description))
+		mermaid.WriteString(fmt.Sprintf("    %s{\"`%s`\"}\n", condition.Name, escape(ifEmpty(condition.Description, condition.Name))))
 		if condition.True != nil {
 			if condition.True.Action != "" {
-				mermaid.WriteString(fmt.Sprintf("    %s_true[\"`%s`\"]\n", condition.Name, condition.True.Description))
+				mermaid.WriteString(fmt.Sprintf("    %s_true[\"`%s`\"]\n", condition.Name, escape(ifEmpty(condition.True.Description, condition.Name+"_true"))))
 			}
 
 			if condition.True.Terminate {
@@ -34,7 +34,7 @@ func ExportMermaid(yamlString []byte, defaultConditionName string) (string, erro
 
 		if condition.False != nil {
 			if condition.False.Action != "" {
-				mermaid.WriteString(fmt.Sprintf("    %s_false[\"%s\"]\n", condition.Name, condition.False.Description))
+				mermaid.WriteString(fmt.Sprintf("    %s_false[\"%s\"]\n", condition.Name, escape(ifEmpty(condition.False.Description, condition.Name+"_false"))))
 			}
 
 			if condition.False.Terminate {
@@ -92,4 +92,15 @@ func renderDecision(
 		}
 	}
 	return nil
+}
+
+func ifEmpty(first, second string) string {
+	if first == "" {
+		return second
+	}
+	return first
+}
+
+func escape(s string) string {
+	return strings.ReplaceAll(s, "\"", "&quot")
 }
