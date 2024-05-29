@@ -13,7 +13,7 @@ type Rules struct {
 	DefaultCondition *Condition           `yaml:"-"`
 }
 
-// Perform enrichment and validation of rules data during unmarshaling
+// Perform enrichment and validation of rules data during unmarshalling
 func (r *Rules) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	type rules Rules // we need to create an intermediate type to avoid infinite recursion
 	var rr rules
@@ -105,7 +105,7 @@ func (runner *RulesRunner[Context]) injectJSFunction(vm *goja.Runtime, defaultNa
 	runner.functionNames[defaultName] = funcName // Store the function name mapping
 	_, err := vm.RunString(fmt.Sprintf("%s = %s", funcName, funcCode))
 	if err != nil {
-		return fmt.Errorf("error injecting function into vm: %v", err)
+		return fmt.Errorf("error injecting function %s into vm: %v", funcName, err)
 	}
 
 	return nil

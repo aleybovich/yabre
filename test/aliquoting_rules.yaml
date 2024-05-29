@@ -1,23 +1,43 @@
 conditions:
-  check_powder_protocols:
+  create_products:
+    description: Create products for order items in state "pending"
     default: true
+    check: |
+      function() {
+        debug(context, "create_products check")
+        return true
+      }
+    true: 
+      action: |
+        function() {
+          pendingOrderItems = context.OrderItems.filter(oi => oi.State === 'pending')
+
+          context.Products = pendingOrderItems.map(oi => ({
+            Ref: oi.Ref,
+            Rank: oi.Rank,
+            OrderItemRef: oi.Ref,
+            OrderType: oi.OrderType,
+            ProductType: oi.ProductType,
+            Amount: oi.Amount,
+            Concentration: oi.Concentration,
+            Solvent: oi.Solvent,
+            State: 'pending'
+          }));
+        }
+      next: check_powder_protocols
+  check_powder_protocols:
     description: Check if there are any powder protocols among the products.
     check: |
       function () {
-        if (debug) ( debug(context, "I'm in check_powder_protocols") )
-        return context.OrderItems.find(p => p.ProductType === 'powder') !== undefined;
+        return context.Products.find(p => p.ProductType === 'powder') !== undefined;
       }
     true:
       description: Fail all powder products and their corresponding order items.
       action: |
         function () {
-          const powderOrderItems = context.OrderItems.filter(p => p.ProductType === 'powder');
-          powderOrderItems.forEach(p => {
+          const powderProducts = context.Products.filter(p => p.ProductType === 'powder');
+          powderProducts.forEach(p => {
             p.State = 'fail';
-            const orderItem = context.OrderItems.find(oi => oi.Ref === p.OrderItemRef);
-            if (orderItem) {
-              orderItem.State = 'fail';
-            }
           });
         }
       next: check_mixed_solvents
@@ -27,21 +47,41 @@ conditions:
     description: Check if there are mixed solvents or concentrations among the solution order items.
     check: |
       function () {
-        const pendingOrderItems = context.OrderItems.filter(oi => oi.State === 'pending');
-        const primaryOrderItem = pendingOrderItems.find(oi => oi.OrderType === 'primary');
-        const earlySolutionOrderItems = pendingOrderItems.filter(oi => oi.OrderType !== 'primary' && oi.ProductType === 'solution');
-        return earlySolutionOrderItems.find(oi => oi.Solvant !== primaryOrderItem.Solvant || oi.Concentration !== primaryOrderItem.Concentration) !== undefined;
+        // get all pending products
+
+        const pendingProducts = context.Products.filter(p => p.State === 'pending');
+        if (pendingProducts == null) {
+          return false
+        }
+
+        // take solvent and concentration or order item with order type primaryOrderItem
+        primaryProduct = context.Products.find(oi => oi.OrderType === 'primary') ?? pendingProducts[0]
+
+        concentration = primaryProduct.Concentration
+        solvent = primaryProduct.Solvent
+
+        // check if there are any order items with different solvent or concentration
+        return pendingProducts.find(p => p.Solvent !== solvent || p.Concentration !== concentration) !== undefined;
       }
     true:
       description: Fail order items and products with mixed solvents or concentrations.
       action: |
         function () {
-          const pendingOrderItems = context.OrderItems.filter(oi => oi.State === 'pending');
-          const primaryOrderItem = pendingOrderItems.find(oi => oi.OrderType === 'primary');
-          const failedOrderItems = pendingOrderItems.filter(oi => oi.OrderType !== 'primary' && (oi.Solvant !== primaryOrderItem.Solvant || oi.Concentration !== primaryOrderItem.Concentration));
-          failedOrderItems.forEach(oi => oi.State = 'fail');
-          const failedProducts = context.Products.filter(p => failedOrderItems.find(oi => oi.Ref === p.OrderItemRef) !== undefined);
-          failedProducts.forEach(p => p.State = 'fail');
+          // get all pending products
+          const pendingProducts = context.Products.filter(p => p.State === 'pending');
+
+          // take solvent and concentration or order item with order type primaryOrderItem
+          primaryOrderItem = context.OrderItems.find(oi => oi.OrderType === 'primary') ?? context.OrderItems[0]
+
+          concentration = primaryOrderItem[0].Concentration
+          solvent = primaryOrderItem[0].Solvent
+          
+          // set state to failed for all products with different solvent or concentration
+          pendingProducts.forEach(p => {
+            if (p.Solvent !== solvent || p.Concentration !== concentration) {
+              p.State = 'fail';
+            }
+          });
         }
       next: check_overflow
     false:
@@ -50,8 +90,8 @@ conditions:
     description: Check if the total required amount exceeds the container amount.
     check: |
       function () {
-        const pendingOrderItems = context.OrderItems.filter(oi => oi.State === 'pending');
-        const totalRequiredAmount = pendingOrderItems.reduce((sum, oi) => sum + oi.Amount, 0);
+        const pendingProducts = context.Products.filter(oi => oi.State === 'pending');
+        const totalRequiredAmount = pendingProducts.reduce((sum, oi) => sum + oi.Amount, 0);
         return totalRequiredAmount > context.Container.Amount;
       }
     true:
@@ -59,7 +99,6 @@ conditions:
       action: |
         function () {
           context.Products.forEach(p => p.State = 'fail');
-          context.OrderItems.forEach(oi => oi.State = 'fail');
         }
       terminate: true
     false:
@@ -68,8 +107,8 @@ conditions:
     description: Check if the actual amount is less than the required amount.
     check: |
       function () {
-        const pendingOrderItems = context.OrderItems.filter(oi => oi.State === 'pending');
-        const totalRequiredAmount = pendingOrderItems.reduce((sum, oi) => sum + oi.Amount, 0);
+        const pendingProducts = context.Products.filter(oi => oi.State === 'pending');
+        const totalRequiredAmount = pendingProducts.reduce((sum, oi) => sum + oi.Amount, 0);
         const diff = context.Container.Amount - totalRequiredAmount;
         return diff < 0;
       }
@@ -77,15 +116,18 @@ conditions:
       description: Fail the lowest-ranked order items and their corresponding products until the remaining amount can be fulfilled.
       action: |
         function () {
-          const pendingOrderItems = context.OrderItems.filter(oi => oi.State === 'pending');
-          const totalRequiredAmount = pendingOrderItems.reduce((sum, oi) => sum + oi.Amount, 0);
-          const diff = context.Container.Amount - totalRequiredAmount;
-          const sortedOrderItems = pendingOrderItems.sort((a, b) => a.Ranking - b.Ranking);
-          let remainingAmount = -diff;
-          for (const orderItem of sortedOrderItems) {
-            if (remainingAmount >= orderItem.Amount) {
-              remainingAmount -= orderItem.Amount;
-              orderItem.State = 'fail';
+          const pendingProducts = context.Products.filter(oi => oi.State === 'pending');
+          const totalRequiredAmount = pendingProducts.reduce((sum, oi) => sum + oi.Amount, 0);
+          const diff = totalRequiredAmount - context.Container.Amount;
+
+          // sort products by rank in ascending order, so we can fail the lowest-ranked ones first 
+          // (rank 1 failed first, rank 2 failed second, etc.)
+          const sortedProducts = pendingProducts.sort((a, b) => a.Ranking - b.Ranking);
+
+          for (const p of sortedProducts) {
+            if (diff > 0) {
+              diff -= p.Amount;
+              p.State = 'fail';
             } else {
               break;
             }
@@ -95,38 +137,26 @@ conditions:
       # It might be less than required by any failed order item, but still usable for a spare
       next: check_leftovers 
     false:
-      next: check_amount_equal_to_required
-  check_amount_equal_to_required:
-    description: Check if the actual amount is equal to the required amount.
-    check: |
-      function () {
-        const pendingOrderItems = context.OrderItems.filter(oi => oi.State === 'pending');
-        const totalRequiredAmount = pendingOrderItems.reduce((sum, oi) => sum + oi.Amount, 0);
-        const diff = context.Container.Amount - totalRequiredAmount;
-        return diff === 0;
-      }
-    true:
-      terminate: true
-    false:
       next: check_amount_more_than_required
   check_amount_more_than_required:
     description: Check if the actual amount is more than the required amount.
     check: |
       function () {
-        const pendingOrderItems = context.OrderItems.filter(oi => oi.State === 'pending');
-        const totalRequiredAmount = pendingOrderItems.reduce((sum, oi) => sum + oi.Amount, 0);
+        const pendingProducts = context.Products.filter(oi => oi.State === 'pending');
+        const totalRequiredAmount = pendingProducts.reduce((sum, oi) => sum + oi.Amount, 0);
         return context.Container.Amount - totalRequiredAmount > 0;
       }
     true:
       next: check_remainder_less_than_50
     false:
+      # Amount equals to required if we got here
       terminate: true
   check_leftovers:
     description: Check if there are any non-consumed leftovers.
     check: |
       function () {
-        const pendingOrderItems = context.OrderItems.filter(oi => oi.State === 'pending');
-        return context.Container.Amount > pendingOrderItems.reduce((sum, oi) => sum + oi.Amount, 0);
+        const pendingProducts = context.Products.filter(oi => oi.State === 'pending');
+        return context.Container.Amount > pendingProducts.reduce((sum, oi) => sum + oi.Amount, 0);
       }
     true:
       next: check_remainder_less_than_50
@@ -136,8 +166,8 @@ conditions:
     description: Check if the remainder is less than 50 μl.
     check: |
       function () {
-        const pendingOrderItems = context.OrderItems.filter(oi => oi.State === 'pending');
-        const totalRequiredAmount = pendingOrderItems.reduce((sum, oi) => sum + oi.Amount, 0);
+        const pendingProducts = context.Products.filter(oi => oi.State === 'pending');
+        const totalRequiredAmount = pendingProducts.reduce((sum, oi) => sum + oi.Amount, 0);
         const remainder = context.Container.Amount - totalRequiredAmount;
         return remainder < 50;
       }
@@ -149,8 +179,8 @@ conditions:
     description: Check if the remainder is between 50 μl and 950 μl.
     check: |
       function () {
-        const pendingOrderItems = context.OrderItems.filter(oi => oi.State === 'pending');
-        const totalRequiredAmount = pendingOrderItems.reduce((sum, oi) => sum + oi.Amount, 0);
+        const pendingProducts = context.Products.filter(oi => oi.State === 'pending');
+        const totalRequiredAmount = pendingProducts.reduce((sum, oi) => sum + oi.Amount, 0);
         const remainder = context.Container.Amount - totalRequiredAmount;
         return remainder >= 50 && remainder < 950;
       }
@@ -158,13 +188,15 @@ conditions:
       description: Create a spare tube with the remaining amount.
       action: |
         function () {
-          const pendingOrderItems = context.OrderItems.filter(oi => oi.State === 'pending');
-          const remainder = context.Container.Amount - pendingOrderItems.reduce((sum, oi) => sum + oi.Amount, 0);
+          const pendingProducts = context.Products.filter(oi => oi.State === 'pending');
+          const remainder = context.Container.Amount - pendingProducts.reduce((sum, oi) => sum + oi.Amount, 0);
           const newProduct = {
             Ref: context.Products.length + 1,
             OrderItemRef: null,
             ProductType: 'solution',
             Amount: remainder,
+            Concentration: pendingProducts[0].Concentration,
+            Solvent: pendingProducts[0].Solvent,
             State: 'pending'
           };
           context.Products.push(newProduct);
@@ -176,8 +208,8 @@ conditions:
     description: Check if the remainder is between 950 μl and 1800 μl.
     check: |
       function () {
-        const pendingOrderItems = context.OrderItems.filter(oi => oi.State === 'pending');
-        const totalRequiredAmount = pendingOrderItems.reduce((sum, oi) => sum + oi.Amount, 0);
+        const pendingProducts = context.Products.filter(oi => oi.State === 'pending');
+        const totalRequiredAmount = pendingProducts.reduce((sum, oi) => sum + oi.Amount, 0);
         const remainder = context.Container.Amount - totalRequiredAmount;
         return remainder >= 950 && remainder <= 1800;
       }
@@ -185,13 +217,16 @@ conditions:
       description: Create two spare tubes, one with 900 μl and another with the remaining amount.
       action: |
         function () {
-          const pendingOrderItems = context.OrderItems.filter(oi => oi.State === 'pending');
-          const remainder = context.Container.Amount - pendingOrderItems.reduce((sum, oi) => sum + oi.Amount, 0);
+          const pendingProducts = context.Products.filter(oi => oi.State === 'pending');
+          const totalRequiredAmount = pendingProducts.reduce((sum, oi) => sum + oi.Amount, 0);
+          const remainder = context.Container.Amount - totalRequiredAmount;
           const newProduct1 = {
             Ref: context.Products.length + 1,
             OrderItemRef: null,
             ProductType: 'solution',
             Amount: 900,
+            Concentration: pendingProducts[0].Concentration,
+            Solvent: pendingProducts[0].Solvent,
             State: 'pending'
           };
           const newProduct2 = {
@@ -199,6 +234,8 @@ conditions:
             OrderItemRef: null,
             ProductType: 'solution',
             Amount: remainder - 900,
+            Concentration: pendingProducts[0].Concentration,
+            Solvent: pendingProducts[0].Solvent,
             State: 'pending'
           };
           context.Products.push(newProduct1, newProduct2);
@@ -208,8 +245,6 @@ conditions:
       description: Fail all order items with comment
       action: |
         function () {
-          pendingOrderItems = context.OrderItems.filter(oi => oi.State === 'pending');
-          pendingOrderItems.forEach(ppi => ppi.State = "fail")
-          context.Products = []
+          context.Products.filter(p => p.State === 'pending').forEach(p => p.State = "fail")
         }
       terminate: true
