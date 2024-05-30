@@ -1,0 +1,182 @@
+scripts: |
+  function isPrimaryApplicant(applicant) {
+    return applicant.Type === 'primary';
+  }
+
+  function hasCoApplicant(applicants) {
+    return applicants.some(a => a.Type === 'co-applicant');
+  }
+
+  function getTotalIncome(applicants) {
+    return applicants.reduce((sum, a) => sum + a.Income, 0);
+  }
+
+  function getTotalDebt(applicants) {
+    return applicants.reduce((sum, a) => sum + a.Debt, 0);
+  }
+
+  function getDebtToIncomeRatio(applicants) {
+    const totalIncome = getTotalIncome(applicants);
+    const totalDebt = getTotalDebt(applicants);
+    return totalIncome > 0 ? totalDebt / totalIncome : Infinity;
+  }
+
+conditions:
+  check_primary_applicant:
+    description: Check if there is a primary applicant
+    default: true
+    check: |
+      function () {
+        return context.Applicants.some(isPrimaryApplicant);
+      }
+    true:
+      next: check_applicant_age  
+    false:
+      description: Reject the loan application due to missing primary applicant
+      action: |
+        function () {
+          context.Decision = 'rejected';
+          context.Reason = 'No primary applicant';
+        }
+      terminate: true
+
+  check_applicant_age:
+    description: Check if the primary applicant is at least 18 years old
+    check: |
+      function () {
+        const primaryApplicant = context.Applicants.find(isPrimaryApplicant);
+        return primaryApplicant.Age >= 18;
+      }
+    true:
+      next: check_applicant_income
+    false:
+      description: Reject the loan application due to underage primary applicant
+      action: |
+        function () {
+          context.Decision = 'rejected';
+          context.Reason = 'Primary applicant is underage';
+        }
+      terminate: true
+
+  check_applicant_income:
+    description: Check if the primary applicant's income is at least $1,000
+    check: |
+      function () {
+        const primaryApplicant = context.Applicants.find(isPrimaryApplicant);
+        return primaryApplicant.Income >= 1000;
+      }
+    true:
+      next: check_applicant_credit_score
+    false:
+      description: Reject the loan application due to insufficient income
+      action: |
+        function () {
+          context.Decision = 'rejected';
+          context.Reason = 'Insufficient income';
+        }
+      terminate: true
+
+  check_applicant_credit_score:
+    description: Check if the primary applicant's credit score is at least 600
+    check: |
+      function () {
+        const primaryApplicant = context.Applicants.find(isPrimaryApplicant);
+        return primaryApplicant.CreditScore >= 600;
+      }
+    true:
+      next: check_co_applicant
+    false:
+      description: Reject the loan application due to low credit score
+      action: |
+        function () {
+          context.Decision = 'rejected';
+          context.Reason = 'Low credit score';
+        }
+      terminate: true
+
+  check_co_applicant:
+    description: Check if there is a co-applicant
+    check: |
+      function () {
+        return hasCoApplicant(context.Applicants);
+      }
+    true:
+      next: check_co_applicant_age
+    false:
+      next: check_debt_to_income_ratio
+
+  check_co_applicant_age:
+    description: Check if the co-applicant is at least 18 years old
+    check: |
+      function () {
+        const coApplicant = context.Applicants.find(a => a.Type === 'co-applicant');
+        return coApplicant.Age >= 18;
+      }
+    true:
+      next: check_co_applicant_credit_score
+    false:
+      description: Reject the loan application due to underage co-applicant
+      action: |
+        function () {
+          context.Decision = 'rejected';
+          context.Reason = 'Co-applicant is underage';
+        }
+      terminate: true
+
+  check_co_applicant_credit_score:
+    description: Check if the co-applicant's credit score is at least 600
+    check: |
+      function () {
+        const coApplicant = context.Applicants.find(a => a.Type === 'co-applicant');
+        return coApplicant.CreditScore >= 600;
+      }
+    true:
+      next: check_debt_to_income_ratio
+    false:
+      description: Reject the loan application due to co-applicant's low credit score
+      action: |
+        function () {
+          context.Decision = 'rejected';
+          context.Reason = 'Co-applicant has low credit score';
+        }
+      terminate: true
+
+  check_debt_to_income_ratio:
+    description: Check if the debt-to-income ratio is less than or equal to 36%
+    check: |
+      function () {
+        return getDebtToIncomeRatio(context.Applicants) <= 0.36;
+      }
+    true:
+      next: check_loan_amount
+    false:
+      description: Reject the loan application due to high debt-to-income ratio
+      action: |
+        function () {
+          context.Decision = 'rejected';
+          context.Reason = 'High debt-to-income ratio';
+        }
+      terminate: true
+
+  check_loan_amount:
+    description: Check if the loan amount is less than or equal to 5 times the total income
+    check: |
+      function () {
+        const totalIncome = getTotalIncome(context.Applicants);
+        return context.LoanAmount <= 5 * totalIncome;
+      }
+    true:
+      description: Approve the loan application
+      action: |
+        function () {
+          context.Decision = 'approved';
+        }
+      terminate: true
+    false:
+      description: Reject the loan application due to excessive loan amount
+      action: |
+        function () {
+          context.Decision = 'rejected';
+          context.Reason = 'Excessive loan amount';
+        }
+      terminate: true

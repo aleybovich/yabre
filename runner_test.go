@@ -88,7 +88,7 @@ func TestRunnerUpdateContext(t *testing.T) {
 	assert.Equal(t, "Updated", updatedContext.Value)
 }
 
-func TestRunner(t *testing.T) {
+func TestRunnerAliquoting(t *testing.T) {
 	// Create a sample context
 	context := RecipeContext{
 		Container: Container{Amount: 2100},
@@ -190,6 +190,198 @@ func TestRunner(t *testing.T) {
 		"Terminating",
 	}
 	assert.Equal(t, expectedDecisions, decisions)
+}
+
+func TestLoanApproval(t *testing.T) {
+	// Load the YAML rules
+	yamlData, err := loadYaml("test/loan_approval.yaml")
+	assert.NoError(t, err)
+
+	// Test case for the happy path
+	t.Run("HappyPath", func(t *testing.T) {
+		context := struct {
+			Applicants []Applicant
+			LoanAmount int
+			Decision   string
+			Reason     string
+		}{
+			Applicants: []Applicant{
+				{Type: "primary", Age: 25, Income: 5000, Debt: 1000, CreditScore: 750},
+				{Type: "co-applicant", Age: 30, Income: 4000, Debt: 500, CreditScore: 700},
+			},
+			LoanAmount: 40000,
+		}
+
+		runner, err := NewRulesRunnerFromYaml(yamlData, &context)
+		assert.NoError(t, err)
+
+		_, err = runner.RunRules(&context, nil)
+		assert.NoError(t, err)
+		assert.Equal(t, "approved", context.Decision)
+		assert.Empty(t, context.Reason)
+	})
+
+	// Test cases for failed decisions
+	testCases := []struct {
+		name     string
+		context  LoanContext
+		expected struct {
+			decision string
+			reason   string
+		}
+	}{
+		{
+			name: "MissingPrimaryApplicant",
+			context: LoanContext{
+				Applicants: []Applicant{
+					{Type: "co-applicant", Age: 30, Income: 4000, Debt: 500, CreditScore: 700},
+				},
+			},
+			expected: struct {
+				decision string
+				reason   string
+			}{
+				decision: "rejected",
+				reason:   "No primary applicant",
+			},
+		},
+		{
+			name: "UnderagePrimaryApplicant",
+			context: LoanContext{
+				Applicants: []Applicant{
+					{Type: "primary", Age: 17, Income: 5000, Debt: 1000, CreditScore: 750},
+				},
+			},
+			expected: struct {
+				decision string
+				reason   string
+			}{
+				decision: "rejected",
+				reason:   "Primary applicant is underage",
+			},
+		},
+		{
+			name: "InsufficientIncome",
+			context: LoanContext{
+				Applicants: []Applicant{
+					{Type: "primary", Age: 25, Income: 500, Debt: 1000, CreditScore: 750},
+				},
+			},
+			expected: struct {
+				decision string
+				reason   string
+			}{
+				decision: "rejected",
+				reason:   "Insufficient income",
+			},
+		},
+		{
+			name: "LowCreditScore",
+			context: LoanContext{
+				Applicants: []Applicant{
+					{Type: "primary", Age: 25, Income: 5000, Debt: 1000, CreditScore: 550},
+				},
+			},
+			expected: struct {
+				decision string
+				reason   string
+			}{
+				decision: "rejected",
+				reason:   "Low credit score",
+			},
+		},
+		{
+			name: "UnderageCoApplicant",
+			context: LoanContext{
+				Applicants: []Applicant{
+					{Type: "primary", Age: 25, Income: 5000, Debt: 1000, CreditScore: 750},
+					{Type: "co-applicant", Age: 17, Income: 4000, Debt: 500, CreditScore: 700},
+				},
+			},
+			expected: struct {
+				decision string
+				reason   string
+			}{
+				decision: "rejected",
+				reason:   "Co-applicant is underage",
+			},
+		},
+		{
+			name: "LowCoApplicantCreditScore",
+			context: LoanContext{
+				Applicants: []Applicant{
+					{Type: "primary", Age: 25, Income: 5000, Debt: 1000, CreditScore: 750},
+					{Type: "co-applicant", Age: 30, Income: 4000, Debt: 500, CreditScore: 550},
+				},
+			},
+			expected: struct {
+				decision string
+				reason   string
+			}{
+				decision: "rejected",
+				reason:   "Co-applicant has low credit score",
+			},
+		},
+		{
+			name: "HighDebtToIncomeRatio",
+			context: LoanContext{
+				Applicants: []Applicant{
+					{Type: "primary", Age: 25, Income: 5000, Debt: 4000, CreditScore: 750},
+				},
+			},
+			expected: struct {
+				decision string
+				reason   string
+			}{
+				decision: "rejected",
+				reason:   "High debt-to-income ratio",
+			},
+		},
+		{
+			name: "ExcessiveLoanAmount",
+			context: LoanContext{
+				Applicants: []Applicant{
+					{Type: "primary", Age: 25, Income: 5000, Debt: 1000, CreditScore: 750},
+				},
+				LoanAmount: 100000,
+			},
+			expected: struct {
+				decision string
+				reason   string
+			}{
+				decision: "rejected",
+				reason:   "Excessive loan amount",
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			runner, err := NewRulesRunnerFromYaml(yamlData, &tc.context)
+			assert.NoError(t, err)
+
+			_, err = runner.RunRules(&tc.context, nil)
+			assert.NoError(t, err)
+
+			assert.Equal(t, tc.expected.decision, runner.Context.Decision)
+			assert.Equal(t, tc.expected.reason, runner.Context.Reason)
+		})
+	}
+}
+
+type LoanContext struct {
+	Applicants []Applicant
+	LoanAmount int
+	Decision   string
+	Reason     string
+}
+
+type Applicant struct {
+	Type        string
+	Age         int
+	Income      int
+	Debt        int
+	CreditScore int
 }
 
 func loadYaml(fileName string) ([]byte, error) {
