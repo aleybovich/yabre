@@ -1,4 +1,5 @@
 [0.5.0]
+- Added: custom reusable js functions maybe defined in `scripts` section of a rules yaml file
 - Changed: injectable debug function arguments from `(context, interface{})` to `(...interface{})`
 - Changed: updated unit tests
 

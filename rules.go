@@ -9,6 +9,7 @@ import (
 )
 
 type Rules struct {
+	Scripts          string               `yaml:"scripts"`
 	Conditions       map[string]Condition `yaml:"conditions"`
 	DefaultCondition *Condition           `yaml:"-"`
 }
@@ -69,6 +70,13 @@ func (rr *RulesRunner[Context]) loadRulesFromYaml(yamlFile []byte) (*Rules, erro
 
 func (runner *RulesRunner[Context]) addJsFunctions(vm *goja.Runtime) error {
 	// add all js functions to the vm
+	if runner.Rules.Scripts != "" {
+		_, err := vm.RunString(runner.Rules.Scripts)
+		if err != nil {
+			return fmt.Errorf("error injecting scripts into vm: %v", err)
+		}
+	}
+
 	for _, condition := range runner.Rules.Conditions {
 		if condition.Check != "" {
 			checkName := condition.Name
