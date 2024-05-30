@@ -115,7 +115,7 @@ func TestRunner(t *testing.T) {
 		WithDecisionCallback[RecipeContext](func(msg string, args ...interface{}) {
 			msg = fmt.Sprintf(msg, args...)
 			//fmt.Print(msg)
-			decisions = append(decisions, strings.TrimLeft(strings.TrimRight(msg, "\n"), "\t"))
+			decisions = append(decisions, strings.Trim(strings.TrimLeft(msg, "\t"), " "))
 		}))
 	assert.NoError(t, err)
 
@@ -131,45 +131,64 @@ func TestRunner(t *testing.T) {
 	assert.Equal(t, "create_products check", debugString)
 
 	// Check the updated context
-	// assert.Equal(t, 2, len(updatedContext.Products))
-	// assert.Equal(t, 900, updatedContext.Products[0].Amount)
-	// assert.Equal(t, 400, updatedContext.Products[1].Amount)
+	assert.Equal(t, 5, len(updatedContext.Products))
+
+	assert.Equal(t, 300, updatedContext.Products[0].Amount)
+	assert.Equal(t, "fail", updatedContext.Products[0].State)
+
+	assert.Equal(t, 500, updatedContext.Products[1].Amount)
+	assert.Equal(t, "pending", updatedContext.Products[1].State)
+
+	assert.Equal(t, 300, updatedContext.Products[2].Amount)
+	assert.Equal(t, "pending", updatedContext.Products[2].State)
+
+	assert.Equal(t, 900, updatedContext.Products[3].Amount)
+	assert.Equal(t, "pending", updatedContext.Products[3].State)
+
+	assert.Equal(t, 400, updatedContext.Products[4].Amount)
+	assert.Equal(t, "pending", updatedContext.Products[4].State)
 
 	p, _ := json.MarshalIndent(updatedContext.Products, "", "  ")
 	fmt.Printf("Products: %v\n", string(p))
 
-	// expectedDecisions := []string{
-	// 	"Evaluating condition: [check_powder_protocols] Check if there are any powder protocols among the products.",
-	// 	"Condition [check_powder_protocols] evaluated to [true]",
-	// 	"Running action: [check_powder_protocols_true] Fail all powder products and their corresponding order items.",
-	// 	"Moving to next condition:[check_mixed_solvents]",
-	// 	"Evaluating condition: [check_mixed_solvents] Check if there are mixed solvents or concentrations among the solution order items.",
-	// 	"Condition [check_mixed_solvents] evaluated to [false]",
-	// 	"Moving to next condition:[check_overflow]",
-	// 	"Evaluating condition: [check_overflow] Check if the total required amount exceeds the container amount.",
-	// 	"Condition [check_overflow] evaluated to [false]",
-	// 	"Moving to next condition:[check_amount_less_than_required]",
-	// 	"Evaluating condition: [check_amount_less_than_required] Check if the actual amount is less than the required amount.",
-	// 	"Condition [check_amount_less_than_required] evaluated to [false]",
-	// 	"Moving to next condition:[check_amount_equal_to_required]",
-	// 	"Evaluating condition: [check_amount_equal_to_required] Check if the actual amount is equal to the required amount.",
-	// 	"Condition [check_amount_equal_to_required] evaluated to [false]",
-	// 	"Moving to next condition:[check_amount_more_than_required]",
-	// 	"Evaluating condition: [check_amount_more_than_required] Check if the actual amount is more than the required amount.",
-	// 	"Condition [check_amount_more_than_required] evaluated to [true]",
-	// 	"Moving to next condition:[check_remainder_less_than_50]",
-	// 	"Evaluating condition: [check_remainder_less_than_50] Check if the remainder is less than 50 μl.",
-	// 	"Condition [check_remainder_less_than_50] evaluated to [false]",
-	// 	"Moving to next condition:[check_remainder_between_50_and_950]",
-	// 	"Evaluating condition: [check_remainder_between_50_and_950] Check if the remainder is between 50 μl and 950 μl.",
-	// 	"Condition [check_remainder_between_50_and_950] evaluated to [false]",
-	// 	"Moving to next condition:[check_remainder_between_950_and_1800]",
-	// 	"Evaluating condition: [check_remainder_between_950_and_1800] Check if the remainder is between 950 μl and 1800 μl.",
-	// 	"Condition [check_remainder_between_950_and_1800] evaluated to [true]",
-	// 	"Running action: [check_remainder_between_950_and_1800_true] Create two spare tubes, one with 900 μl and another with the remaining amount.",
-	// 	"Terminating",
-	// }
-	// assert.Equal(t, expectedDecisions, decisions)
+	fmt.Print("Decisions:\n")
+	for _, d := range decisions {
+		fmt.Println(d)
+	}
+
+	expectedDecisions := []string{
+		"Evaluating condition: [create_products] Create products for order items in state \"pending\"",
+		"Condition [create_products] evaluated to [true]",
+		"Running action: [create_products_true]",
+		"Moving to next condition:[check_powder_protocols]",
+		"Evaluating condition: [check_powder_protocols] Check if there are any powder protocols among the products.",
+		"Condition [check_powder_protocols] evaluated to [true]",
+		"Running action: [check_powder_protocols_true] Fail all powder products and their corresponding order items.",
+		"Moving to next condition:[check_mixed_solvents]",
+		"Evaluating condition: [check_mixed_solvents] Check if there are mixed solvents or concentrations among the solution order items.",
+		"Condition [check_mixed_solvents] evaluated to [false]",
+		"Moving to next condition:[check_overflow]",
+		"Evaluating condition: [check_overflow] Check if the total required amount exceeds the container amount.",
+		"Condition [check_overflow] evaluated to [false]",
+		"Moving to next condition:[check_amount_less_than_required]",
+		"Evaluating condition: [check_amount_less_than_required] Check if the actual amount is less than the required amount.",
+		"Condition [check_amount_less_than_required] evaluated to [false]",
+		"Moving to next condition:[check_amount_more_than_required]",
+		"Evaluating condition: [check_amount_more_than_required] Check if the actual amount is more than the required amount.",
+		"Condition [check_amount_more_than_required] evaluated to [true]",
+		"Moving to next condition:[check_remainder_less_than_50]",
+		"Evaluating condition: [check_remainder_less_than_50] Check if the remainder is less than 50 μl.",
+		"Condition [check_remainder_less_than_50] evaluated to [false]",
+		"Moving to next condition:[check_remainder_between_50_and_950]",
+		"Evaluating condition: [check_remainder_between_50_and_950] Check if the remainder is between 50 μl and 950 μl.",
+		"Condition [check_remainder_between_50_and_950] evaluated to [false]",
+		"Moving to next condition:[check_remainder_between_950_and_1800]",
+		"Evaluating condition: [check_remainder_between_950_and_1800] Check if the remainder is between 950 μl and 1800 μl.",
+		"Condition [check_remainder_between_950_and_1800] evaluated to [true]",
+		"Running action: [check_remainder_between_950_and_1800_true] Create two spare tubes, one with 900 μl and another with the remaining amount.",
+		"Terminating",
+	}
+	assert.Equal(t, expectedDecisions, decisions)
 }
 
 func loadYaml(fileName string) ([]byte, error) {
