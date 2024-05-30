@@ -92,7 +92,7 @@ func (runner *RulesRunner[Context]) addJsFunctions(vm *goja.Runtime) error {
 		}
 		if condition.False != nil && condition.False.Action != "" {
 			actionName := fmt.Sprintf("%s_%t", condition.Name, condition.False.Value)
-			if err := runner.injectJSFunction(vm, actionName, condition.True.Action); err != nil {
+			if err := runner.injectJSFunction(vm, actionName, condition.False.Action); err != nil {
 				return fmt.Errorf("error injecting action function into vm: %v", err)
 			}
 		}
