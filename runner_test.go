@@ -1,7 +1,6 @@
 package yabre
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
@@ -59,9 +58,11 @@ func TestRunnerGoFunctions(t *testing.T) {
 	yamlData, err := loadYaml("test/go_rules.yaml")
 	assert.NoError(t, err)
 	runner, err := NewRulesRunnerFromYaml(yamlData, &context,
-		WithDebugCallback(
-			func(ctx TestContext, data interface{}) {
-				debugMessage = fmt.Sprintf("%v", data)
+		WithDebugCallback[TestContext](
+			func(data ...interface{}) {
+				if len(data) > 0 {
+					debugMessage = fmt.Sprintf("%v", data[0])
+				}
 			}),
 		WithGoFunction[TestContext]("add", add))
 	assert.NoError(t, err)
@@ -104,13 +105,17 @@ func TestRunner(t *testing.T) {
 	decisions := []string{}
 
 	yamlData, err := loadYaml("test/aliquoting_rules.yaml")
+
 	assert.NoError(t, err)
+
 	runner, err := NewRulesRunnerFromYaml(
 		yamlData,
 		&context,
-		WithDebugCallback(
-			func(ctx RecipeContext, data interface{}) {
-				debugData = data
+		WithDebugCallback[RecipeContext](
+			func(data ...interface{}) {
+				if len(data) > 0 {
+					debugData = data[0]
+				}
 			}),
 		WithDecisionCallback[RecipeContext](func(msg string, args ...interface{}) {
 			msg = fmt.Sprintf(msg, args...)
@@ -121,6 +126,7 @@ func TestRunner(t *testing.T) {
 
 	// Run the rules
 	updatedContext, err := runner.RunRules(&context, nil)
+
 	assert.NoError(t, err)
 	assert.NotNil(t, updatedContext)
 
@@ -148,13 +154,8 @@ func TestRunner(t *testing.T) {
 	assert.Equal(t, 400, updatedContext.Products[4].Amount)
 	assert.Equal(t, "pending", updatedContext.Products[4].State)
 
-	p, _ := json.MarshalIndent(updatedContext.Products, "", "  ")
-	fmt.Printf("Products: %v\n", string(p))
-
-	fmt.Print("Decisions:\n")
-	for _, d := range decisions {
-		fmt.Println(d)
-	}
+	//p, _ := json.MarshalIndent(updatedContext.Products, "", "  ")
+	//fmt.Printf("Products: %v\n", string(p))
 
 	expectedDecisions := []string{
 		"Evaluating condition: [create_products] Create products for order items in state \"pending\"",

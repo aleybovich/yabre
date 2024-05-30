@@ -11,6 +11,6 @@ conditions:
       action: |
         function check_debug_true() {
           const result = add(2, 3);
-          debug(context, "Go function result: " + result);
+          debug("Go function result: " + result);
         }
       terminate: true

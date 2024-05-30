@@ -9,7 +9,7 @@ import (
 type RulesRunner[Context interface{}] struct {
 	Rules         *Rules
 	Context       *Context
-	debugCallback func(Context, interface{})
+	debugCallback func(...interface{})
 	goFunctions   map[string]func(...interface{}) (interface{}, error)
 	// callback to be called when a decision is made
 	decisionCallback func(msg string, args ...interface{})
@@ -20,7 +20,7 @@ type RulesRunner[Context interface{}] struct {
 type WithOption[Context interface{}] func(*RulesRunner[Context])
 
 // WithDebugCallback sets the DebugCallback option
-func WithDebugCallback[Context interface{}](callback func(Context, interface{})) WithOption[Context] {
+func WithDebugCallback[Context interface{}](callback func(...interface{})) WithOption[Context] {
 	return func(runner *RulesRunner[Context]) {
 		runner.debugCallback = callback
 	}

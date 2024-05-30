@@ -1,3 +1,7 @@
+[0.5.0]
+- Changed: injectable debug function arguments from `(context, interface{})` to `(...interface{})`
+- Changed: updated unit tests
+
 [0.4.0]
 - Changed: fixed module name
 

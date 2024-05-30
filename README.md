@@ -182,8 +182,12 @@ You can provide a debug callback function to log and monitor the execution of ru
 
 ```go
 runner, err := yabre.NewRulesRunnerFromYaml("rules.yaml", &context, yabre.WithDebugCallback(
-    func(ctx MyContext, data interface{}) {
+    func(data ...interface{}) {
+      if len(data) > 0 {
         fmt.Printf("Debug: %v\n", data)
+      } else {
+        fmt.Println("debug callback data is empty")
+      }
     }))
 ```
 
@@ -195,7 +199,7 @@ conditions:
     description: Check if debug function is called
     check: |
       function check_debug() {
-        debug(context, "Debug function called");
+        debug("Debug function called");
         return true;
       }
     true:
@@ -209,7 +213,7 @@ The Business Rules Engine provides a `WithDecisionCallback` option that allows y
 To use the decision callback, you can initialize the rules runner with the `WithDecisionCallback` option:
 
 ```go
-runner, err := yabre.NewRulesRunnerFromYaml("rules.yaml", &context, yabre.WithDecisionCallback(
+runner, err := yabre.NewRulesRunnerFromYaml(yamlData, &context, yabre.WithDecisionCallback(
     func(msg string, args ...interface{}) {
         fmt.Printf("Decision: %s\n", fmt.Sprintf(msg, args...))
     }))
