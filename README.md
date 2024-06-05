@@ -57,7 +57,7 @@ import "github.com/aleybovich/yabre"
    }
    ```
 
-
+Note: context is `interface{}` so it can be any type of variable. `Struct` type makes sense in most scenarios.
 
 3. Initialize the rules runner with your YAML file and context:
 
@@ -141,7 +141,7 @@ Condition name should be lowercase alphanumeric symbols and `_` only. Ex. `weigh
 
 Javascript functions can have any unique valid names; anonymous functions are also allowed and prefferred.
 
-You can define multiple conditions within the `conditions` block. The engine will evaluate the conditions starting from the specified `startCondition` when calling `RunRules`.
+You can define multiple conditions within the `conditions` block. The engine will evaluate the conditions starting from the specified `startCondition` when calling `RunRules`; if `startCondition` is not provided, the engine will look for a condition with `default` property that equals `true`.
 
 Note that the JavaScript functions defined in the YAML file have access to the `context` object, which allows you to read and modify the context data during rule execution.
 
