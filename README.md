@@ -45,24 +45,33 @@ import "github.com/aleybovich/yabre"
              function check_condition_true() {
                context.Result = "Condition met";
              }
-         terminate: true`
+         terminate: true
+       false: 
+         description: Perform an action if condition is false   
+         action:
+           function: |
+             function check_condition_true() {
+               context.Result = "Condition not met";
+             }
+         terminate: true
+         `
    ```
 
 2. Create a context struct that holds the necessary data for your rules:
 
    ```go
    type MyContext struct {
-       Value  string `json:"value"`
+       Weight float64 `json:"weight"`
        Result string `json:"result"`
    }
    ```
 
-Note: context is `interface{}` so it can be any type of variable. `Struct` type makes sense in most scenarios.
+Note: context is `interface{}` so it can be any type of variable. A `Struct` type makes sense in most scenarios.
 
 3. Initialize the rules runner with your YAML file and context:
 
    ```go
-   context := MyContext{Value: "Valid"}
+   context := MyContext{Weight: 450}
    runner, err := yabre.NewRulesRunnerFromYaml(yamlData, &context)
    if err != nil {
        // Handle the error
@@ -83,6 +92,7 @@ Note: context is `interface{}` so it can be any type of variable. `Struct` type 
 
    ```go
    fmt.Println(updatedContext.Result)
+   // Output: Condition met
    ```
 
 ## Building the YAML Rules File
@@ -168,7 +178,7 @@ conditions:
     description: Check the sum of two numbers
     check: |
       function check_sum() {
-        const result = add(2, 3); // usign injected function inside the script
+        const result = add(2, 3); // using injected function inside the script
         return result === 5;
       }
     true:
