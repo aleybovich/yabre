@@ -312,4 +312,4 @@ You can render this Mermaid code using Mermaid-compatible tools or platforms to 
 
 ## License
 
-This project is licensed under the [MIT License](LICENSE).
+This project is licensed under the [LICENSE](LICENSE).
