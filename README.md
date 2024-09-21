@@ -186,6 +186,90 @@ conditions:
       terminate: true
 ```
 
+## Using GoFuncWrapper with Custom Go Functions
+
+When extending the engine with custom Go functions, you might find yourself writing functions with a `func(...interface{}) (interface{}, error)` signature to match the BRE's extension function requirements. This approach can lead to verbose code with extensive type checking and argument validation within each function. The included `GoFuncWrapper` utility allows you to write strongly typed functions with controlled arguments, which are then automatically adapted for use with the BRE. This results in cleaner, more maintainable code and improved type safety.
+
+### Usage
+
+1. Define your custom Go function:
+
+   ```go
+   func multiply(a, b float64) float64 {
+       return a * b
+   }
+   ```
+
+2. Use `GoFuncWrapper` when adding the function to the BRE:
+
+   ```go
+   runner, err := yabre.NewRulesRunnerFromYaml("rules.yaml", &context, 
+       yabre.WithGoFunction("multiply", yabre.GoFuncWrapper(multiply)))
+   ```
+
+### Examples
+
+#### Example 1: Function with multiple arguments and a single return value
+
+```go
+func concat(a, b string) string {
+    return a + b
+}
+
+runner, err := yabre.NewRulesRunnerFromYaml("rules.yaml", &context, 
+    yabre.WithGoFunction("concat", yabre.GoFuncWrapper(concat)))
+```
+
+In your YAML rules:
+
+```yaml
+conditions:
+  check_concat:
+    description: Concatenate two strings
+    check: |
+      function check_concat() {
+        const result = concat("Hello, ", "World!");
+        return result === "Hello, World!";
+      }
+    true:
+      terminate: true
+```
+
+#### Example 2: Function with error handling
+
+```go
+func divide(a, b float64) (float64, error) {
+    if b == 0 {
+        return 0, errors.New("division by zero")
+    }
+    return a / b, nil
+}
+
+runner, err := yabre.NewRulesRunnerFromYaml("rules.yaml", &context, 
+    yabre.WithGoFunction("divide", yabre.GoFuncWrapper(divide)))
+```
+
+In your YAML rules:
+
+```yaml
+conditions:
+  check_divide:
+    description: Divide two numbers
+    check: |
+      function check_divide() {
+        const [result, err] = divide(10, 2);
+        if (err !== null) {
+          debug("Division error:", err);
+          return false;
+        }
+        return result === 5;
+      }
+    true:
+      terminate: true
+```
+
+By using `GoFuncWrapper`, you can write clear, strongly-typed functions while still seamlessly integrating them into your Business Rules Engine. 
+
 ## Debugging
 
 You can provide a debug callback function to log and monitor the execution of rules using the `WithDebugCallback` option:

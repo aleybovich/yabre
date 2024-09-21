@@ -1,0 +1,2 @@
+# Config for typos VS Code extension
+default.extend-ignore-words-re = ["bre", "BRE"]

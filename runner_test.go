@@ -47,12 +47,8 @@ func TestRunnerGoFunctions(t *testing.T) {
 	var debugMessage string
 	context := TestContext{}
 
-	add := func(args ...interface{}) (interface{}, error) {
-		res := int64(0)
-		for _, arg := range args {
-			res += arg.(int64)
-		}
-		return res, nil
+	add := func(a, b float64) (interface{}, error) {
+		return a + b, nil
 	}
 
 	yamlData, err := loadYaml("test/go_rules.yaml")
@@ -64,13 +60,13 @@ func TestRunnerGoFunctions(t *testing.T) {
 					debugMessage = fmt.Sprintf("%v", data[0])
 				}
 			}),
-		WithGoFunction[TestContext]("add", add))
+		WithGoFunction[TestContext]("add", GoFuncWrapper(add)))
 	assert.NoError(t, err)
 
 	_, err = runner.RunRules(&context, nil)
 	assert.NoError(t, err)
 
-	assert.Equal(t, "Go function result: 5", debugMessage)
+	assert.Equal(t, "Go function result: 5.2", debugMessage)
 }
 
 func TestRunnerUpdateContext(t *testing.T) {

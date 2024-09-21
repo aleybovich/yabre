@@ -10,7 +10,7 @@ conditions:
       description: Call injected Go function
       action: |
         function check_debug_true() {
-          const result = add(2, 3);
+          const result = add(2.2, 3);
           debug("Go function result: " + result);
         }
       terminate: true
