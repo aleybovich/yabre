@@ -161,10 +161,8 @@ Note that the JavaScript functions defined in the YAML file have access to the `
 You can extend the functionality of the rules engine by injecting custom Go functions using the `WithGoFunction` option. Here's an example:
 
 ```go
-add := func(args ...interface{}) (interface{}, error) {
-    a := args[0].(int64)
-    b := args[1].(int64)
-    return a + b, nil
+add := func(a, b int) int {
+    return a + b
 }
 
 runner, err := yabre.NewRulesRunnerFromYaml("rules.yaml", &context, yabre.WithGoFunction("add", add))
@@ -186,26 +184,22 @@ conditions:
       terminate: true
 ```
 
-## Using GoFuncWrapper with Custom Go Functions
+## Custom Go Functions
 
-When extending the engine with custom Go functions, you might find yourself writing functions with a `func(...interface{}) (interface{}, error)` signature to match the BRE's extension function requirements. This approach can lead to verbose code with extensive type checking and argument validation within each function. The included `GoFuncWrapper` utility allows you to write strongly typed functions with controlled arguments, which are then automatically adapted for use with the BRE. This results in cleaner, more maintainable code and improved type safety.
+The Business Rules Engine now supports any function signature when extending the engine with custom Go functions.
 
 ### Usage
 
-1. Define your custom Go function:
+Simply define your custom Go function and add it to the BRE using `WithGoFunction`:
 
-   ```go
-   func multiply(a, b float64) float64 {
-       return a * b
-   }
-   ```
+```go
+func multiply(a, b float64) float64 {
+    return a * b
+}
 
-2. Use `GoFuncWrapper` when adding the function to the BRE:
-
-   ```go
-   runner, err := yabre.NewRulesRunnerFromYaml("rules.yaml", &context, 
-       yabre.WithGoFunction("multiply", yabre.GoFuncWrapper(multiply)))
-   ```
+runner, err := yabre.NewRulesRunnerFromYaml("rules.yaml", &context, 
+    yabre.WithGoFunction("multiply", multiply))
+```
 
 ### Examples
 
@@ -217,7 +211,7 @@ func concat(a, b string) string {
 }
 
 runner, err := yabre.NewRulesRunnerFromYaml("rules.yaml", &context, 
-    yabre.WithGoFunction("concat", yabre.GoFuncWrapper(concat)))
+    yabre.WithGoFunction("concat", concat))
 ```
 
 In your YAML rules:
@@ -246,7 +240,7 @@ func divide(a, b float64) (float64, error) {
 }
 
 runner, err := yabre.NewRulesRunnerFromYaml("rules.yaml", &context, 
-    yabre.WithGoFunction("divide", yabre.GoFuncWrapper(divide)))
+    yabre.WithGoFunction("divide", divide))
 ```
 
 In your YAML rules:

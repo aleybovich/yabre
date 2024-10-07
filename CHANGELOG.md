@@ -1,3 +1,6 @@
+[0.7.0]
+- Changed: hnhanced `WithGoFunction` with support of any function signature; `goFuncWrapper` is now internal which is a breaking change
+
 [0.6.0]
 - Added: `GoFuncWrapper` wrapper function that allows extending BRE with strongly typed functions
 - Changed: updated README to reflect the improvement

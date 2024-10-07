@@ -60,7 +60,36 @@ func TestRunnerGoFunctions(t *testing.T) {
 					debugMessage = fmt.Sprintf("%v", data[0])
 				}
 			}),
-		WithGoFunction[TestContext]("add", GoFuncWrapper(add)))
+		WithGoFunction[TestContext]("add", add))
+	assert.NoError(t, err)
+
+	_, err = runner.RunRules(&context, nil)
+	assert.NoError(t, err)
+
+	assert.Equal(t, "Go function result: 5.2", debugMessage)
+}
+func TestRunnerGoFunctionsVariadicArgs(t *testing.T) {
+	type TestContext struct{}
+	var debugMessage string
+	context := TestContext{}
+
+	add := func(args ...interface{}) (interface{}, error) {
+		a := args[0].(float64) // 2.2
+		b := args[1].(int64)   // 3
+
+		return a + float64(b), nil
+	}
+
+	yamlData, err := loadYaml("test/go_rules.yaml")
+	assert.NoError(t, err)
+	runner, err := NewRulesRunnerFromYaml(yamlData, &context,
+		WithDebugCallback[TestContext](
+			func(data ...interface{}) {
+				if len(data) > 0 {
+					debugMessage = fmt.Sprintf("%v", data[0])
+				}
+			}),
+		WithGoFunction[TestContext]("add", add))
 	assert.NoError(t, err)
 
 	_, err = runner.RunRules(&context, nil)

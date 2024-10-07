@@ -17,27 +17,43 @@ type RulesRunner[Context interface{}] struct {
 	functionNames map[string]string
 }
 
-type WithOption[Context interface{}] func(*RulesRunner[Context])
+type WithOption[Context interface{}] func(*RulesRunner[Context]) error
 
 // WithDebugCallback sets the DebugCallback option
 func WithDebugCallback[Context interface{}](callback func(...interface{})) WithOption[Context] {
-	return func(runner *RulesRunner[Context]) {
+	return func(runner *RulesRunner[Context]) error {
 		runner.debugCallback = callback
+		return nil
 	}
 }
 
-func WithGoFunction[Context interface{}](name string, f func(...interface{}) (interface{}, error)) WithOption[Context] {
-	return func(runner *RulesRunner[Context]) {
+func WithGoFunction[Context interface{}](name string, f any) WithOption[Context] {
+	return func(runner *RulesRunner[Context]) error {
 		if runner.goFunctions == nil {
 			runner.goFunctions = make(map[string]func(...interface{}) (interface{}, error))
 		}
-		runner.goFunctions[name] = f
+
+		var fn func(...interface{}) (interface{}, error)
+
+		// if the function is NOT of expected signature `func(...interface{}) (interface{}, error)` then wrap it
+		dontWrap, err := checkVariadicAnySignature(f)
+		if err != nil {
+			return fmt.Errorf("invalid go function signature: %w", err)
+		} else if !dontWrap {
+			fn = goFuncWrapper(f)
+		} else {
+			fn = f.(func(...interface{}) (interface{}, error))
+		}
+
+		runner.goFunctions[name] = fn
+		return nil
 	}
 }
 
 func WithDecisionCallback[Context interface{}](callback func(msg string, args ...interface{})) WithOption[Context] {
-	return func(runner *RulesRunner[Context]) {
+	return func(runner *RulesRunner[Context]) error {
 		runner.decisionCallback = callback
+		return nil
 	}
 }
 
@@ -57,7 +73,10 @@ func NewRulesRunnerFromYaml[Context interface{}](yamlData []byte, context *Conte
 
 	// Execute options
 	for _, op := range options {
-		op(runner)
+		err := op(runner)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	// Load the rules from the YAML data

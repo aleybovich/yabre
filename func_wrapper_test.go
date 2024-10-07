@@ -13,7 +13,7 @@ func TestGoFuncWrapper(t *testing.T) {
 		f := func(a int) (interface{}, error) {
 			return fmt.Sprintf("Got %d", a), nil
 		}
-		wrapped := GoFuncWrapper(f)
+		wrapped := goFuncWrapper(f)
 		result, err := wrapped(42)
 		assert.NoError(t, err)
 		assert.Equal(t, "Got 42", result)
@@ -23,7 +23,7 @@ func TestGoFuncWrapper(t *testing.T) {
 		f := func(a int) interface{} {
 			return fmt.Sprintf("Got %d", a)
 		}
-		wrapped := GoFuncWrapper(f)
+		wrapped := goFuncWrapper(f)
 		result, err := wrapped(42)
 		assert.NoError(t, err)
 		assert.Equal(t, "Got 42", result)
@@ -33,7 +33,7 @@ func TestGoFuncWrapper(t *testing.T) {
 		f := func(a string, b int, c float64) interface{} {
 			return fmt.Sprintf("Got %s, %d, %.2f", a, b, c)
 		}
-		wrapped := GoFuncWrapper(f)
+		wrapped := goFuncWrapper(f)
 		result, err := wrapped("hello", 42, 3.14)
 		assert.NoError(t, err)
 		assert.Equal(t, "Got hello, 42, 3.14", result)
@@ -46,7 +46,7 @@ func TestGoFuncWrapper(t *testing.T) {
 			}
 			return fmt.Sprintf("Got %d", a), nil
 		}
-		wrapped := GoFuncWrapper(f)
+		wrapped := goFuncWrapper(f)
 		_, err := wrapped(-1)
 		assert.EqualError(t, err, "negative number")
 	})
@@ -55,7 +55,7 @@ func TestGoFuncWrapper(t *testing.T) {
 		f := func(a int, b string) interface{} {
 			return 0
 		}
-		wrapped := GoFuncWrapper(f)
+		wrapped := goFuncWrapper(f)
 		_, err := wrapped(42)
 		assert.EqualError(t, err, "expected 2 arguments, got 1")
 	})
@@ -64,7 +64,7 @@ func TestGoFuncWrapper(t *testing.T) {
 		f := func(a int) interface{} {
 			return ""
 		}
-		wrapped := GoFuncWrapper(f)
+		wrapped := goFuncWrapper(f)
 		_, err := wrapped("not an int")
 		assert.EqualError(t, err, "argument 1 must be 'int' but received 'string'")
 	})
@@ -73,14 +73,14 @@ func TestGoFuncWrapper(t *testing.T) {
 		f := func(a, b float64) float64 {
 			return a + b
 		}
-		wrapped := GoFuncWrapper(f)
+		wrapped := goFuncWrapper(f)
 		result, err := wrapped(3, 4.5) // int and float64
 		assert.NoError(t, err)
 		assert.InDelta(t, 7.5, result, 0.0001)
 	})
 
 	t.Run("Non-function input", func(t *testing.T) {
-		wrapped := GoFuncWrapper(42)
+		wrapped := goFuncWrapper(42)
 		_, err := wrapped()
 		assert.EqualError(t, err, "not a function")
 	})
@@ -89,7 +89,7 @@ func TestGoFuncWrapper(t *testing.T) {
 		f := func() (int, int) {
 			return 42, 24
 		}
-		wrapped := GoFuncWrapper(f)
+		wrapped := goFuncWrapper(f)
 		_, err := wrapped()
 		assert.EqualError(t, err, "second return value must be error, got int")
 	})
@@ -108,8 +108,8 @@ func TestGoFuncWrapper(t *testing.T) {
 			return a + b, nil
 		}
 
-		goFunctions["add"] = GoFuncWrapper(f1)
-		goFunctions["safeAdd"] = GoFuncWrapper(f2)
+		goFunctions["add"] = goFuncWrapper(f1)
+		goFunctions["safeAdd"] = goFuncWrapper(f2)
 
 		result1, err1 := goFunctions["add"](5, 3)
 		assert.NoError(t, err1)
