@@ -9,6 +9,10 @@ flowchart LR
 
 ```
 
+## Architecture
+
+[High Level Architecture Diagram](./doc/ARCH.md)
+
 ## Features
 
 - Define flexible business rules using a declarative YAML syntax and javascript

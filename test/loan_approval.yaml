@@ -1,3 +1,5 @@
+name: loan-approval
+
 scripts: |
   function isPrimaryApplicant(applicant) {
     return applicant.Type === 'primary';
