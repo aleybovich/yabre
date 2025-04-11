@@ -1,0 +1,14 @@
+name: scripts
+
+scripts: |
+      function executeRuleSet1(context) {
+        return context.TextRuleSet1;
+      }
+
+      function executeRuleSet2(context) {
+        return context.TextRuleSet2;
+      }
+
+      function executeRuleSet3(context) {
+        return context.TextRuleSet3;
+      }
