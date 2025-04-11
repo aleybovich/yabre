@@ -1,0 +1,33 @@
+name: main
+
+require:
+  - ruleset1
+  - ruleset2
+  - ruleset3
+
+conditions:
+  check_for_ruleset1:
+    description: Check if we have to execute ruleset1
+    default: true
+    check: |
+      function() {
+        return context.RuleSet === 'ruleset1' // or more complex logic
+      }
+    true:
+      description: Go to ruleset1
+      next: execute_ruleset1
+    false:
+      next: check_for_ruleset2
+
+  check_for_ruleset2:
+    description: Check if we have to execute ruleset2
+    check: |
+      function() {
+        return context.RuleSet === 'ruleset2' // or more complex logic
+      }
+    true:
+      description: Go to ruleset2
+      next: execute_ruleset2
+    false:
+      description: Go to ruleset3
+      next: execute_ruleset3

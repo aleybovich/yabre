@@ -1,0 +1,19 @@
+name: ruleset2
+
+require:
+  - settings
+  - scripts
+
+conditions:
+  execute_ruleset2:
+    check: |
+      function() {
+        return true
+      }
+    true:
+      description: Execute ruleset2
+      action: |
+        function() {
+          debug(executeRuleSet2(context));
+        }
+      terminate: true
