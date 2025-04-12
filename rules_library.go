@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"gopkg.in/yaml.v2"
@@ -15,14 +14,17 @@ type RulesLibrary struct {
 	rulePaths map[string]string
 	// maps rule name to its dependencies
 	dependencies map[string][]string
+	// File system for os or embedded file systems
+	fileSystem fs.FS
 	// base path for all rules/libraries
 	basePath string
-
-	fileSystem fs.FS
 }
 
 type RulesLibrarySettings struct {
-	BasePath   string
+	// BasePath is only required if no FileSystem is provided.
+	// If FileSystem is nil, BasePath will be used to create an OS-based file system using the specified path.
+	BasePath string
+	// FileSystem specifies the file system to be used, either for the OS file system or an embedded file system.
 	FileSystem fs.FS
 }
 
@@ -30,8 +32,8 @@ func NewRulesLibrary(s RulesLibrarySettings) (*RulesLibrary, error) {
 	rl := &RulesLibrary{
 		rulePaths:    make(map[string]string),
 		dependencies: make(map[string][]string),
-		basePath:     s.BasePath,
 		fileSystem:   s.FileSystem,
+		basePath:     s.BasePath,
 	}
 
 	if rl.fileSystem == nil {
@@ -140,7 +142,7 @@ func (rl *RulesLibrary) mergeRules(target *Rules, source *Rules) error {
 }
 
 func (rl *RulesLibrary) loadFile(path string) (*Rules, error) {
-	data, err := os.ReadFile(path)
+	data, err := fs.ReadFile(rl.fileSystem, path)
 	if err != nil {
 		return nil, err
 	}
@@ -154,14 +156,14 @@ func (rl *RulesLibrary) loadFile(path string) (*Rules, error) {
 }
 
 func (rl *RulesLibrary) scanFiles() error {
-	return filepath.Walk(rl.basePath, func(path string, info os.FileInfo, err error) error {
+	return fs.WalkDir(rl.fileSystem, ".", func(path string, info fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
 
 		if !info.IsDir() && (strings.HasSuffix(path, ".yaml") || strings.HasSuffix(path, ".yml")) {
 			// Read file to get name and dependencies
-			data, err := os.ReadFile(path)
+			data, err := fs.ReadFile(rl.fileSystem, path)
 			if err != nil {
 				return fmt.Errorf("failed to read file %s: %w", path, err)
 			}
