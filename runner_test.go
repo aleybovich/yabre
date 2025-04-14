@@ -7,8 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	_ "embed"
-
 	"github.com/stretchr/testify/assert"
 )
 
@@ -135,7 +133,7 @@ func TestRunnerAliquotingEmbedded(t *testing.T) {
 
 	decisions := []string{}
 
-	rl, err := NewRulesLibrary(RulesLibrarySettings{BasePath: "./test", FileSystem: testFs})
+	rl, err := NewRulesLibrary(RulesLibrarySettings{BasePath: "test", FileSystem: testFs})
 
 	assert.NoError(t, err)
 
@@ -226,7 +224,7 @@ func TestRunnerAliquotingEmbedded(t *testing.T) {
 
 func TestLoanApproval(t *testing.T) {
 	// Load the YAML rules
-	rl, err := NewRulesLibrary(RulesLibrarySettings{BasePath: "./test", FileSystem: testFs})
+	rl, err := NewRulesLibrary(RulesLibrarySettings{BasePath: "test", FileSystem: testFs})
 	assert.NoError(t, err)
 
 	// Test case for the happy path

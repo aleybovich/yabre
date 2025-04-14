@@ -1,6 +1,7 @@
 package yabre
 
 import (
+	"embed"
 	"fmt"
 	"io/fs"
 	"os"
@@ -29,6 +30,10 @@ type RulesLibrarySettings struct {
 }
 
 func NewRulesLibrary(s RulesLibrarySettings) (*RulesLibrary, error) {
+	if s.BasePath == "" {
+		s.BasePath = "."
+	}
+
 	rl := &RulesLibrary{
 		rulePaths:    make(map[string]string),
 		dependencies: make(map[string][]string),
@@ -38,6 +43,11 @@ func NewRulesLibrary(s RulesLibrarySettings) (*RulesLibrary, error) {
 
 	if rl.fileSystem == nil {
 		rl.fileSystem = os.DirFS(rl.basePath)
+		// BasePath becomes relative to fileSystem root
+		rl.basePath = "."
+	} else if _, ok := rl.fileSystem.(embed.FS); ok {
+		// For embedded fs, directory walkthru fs.WalkDir doesn't like paths starting with ./ so we trim it
+		rl.basePath = strings.TrimPrefix(rl.basePath, "./")
 	}
 
 	// Scan all yaml files and map dependencies
@@ -161,7 +171,7 @@ func (rl *RulesLibrary) loadFile(path string) (*Rules, error) {
 }
 
 func (rl *RulesLibrary) scanFiles() error {
-	return fs.WalkDir(rl.fileSystem, ".", func(path string, info fs.DirEntry, err error) error {
+	return fs.WalkDir(rl.fileSystem, rl.basePath, func(path string, info fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}

@@ -166,10 +166,12 @@ if err != nil {
 //go:embed rules
 var rulesFS embed.FS
 library, err := yabre.NewRulesLibrary(yabre.RulesLibrarySettings{
-    BasePath:   ".",
+    BasePath:   ".", // Path is relative to the filesystem root
     FileSystem: rulesFS,
 })
 ```
+
+**Note**: When both BasePath and FileSystem are specified, the BasePath is interpreted relative to the FileSystem's root
 
 2. Create a rules runner from the library:
 
