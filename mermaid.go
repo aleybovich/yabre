@@ -7,6 +7,21 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
+func ExportMermaidFromLibrary(library *RulesLibrary, ruleName string, defaultConditionName string) (string, error) {
+	// Load the complete rule set with all dependencies resolved
+	rules, err := library.LoadRules(ruleName)
+	if err != nil {
+		return "", fmt.Errorf("failed to load rules: %w", err)
+	}
+
+	yamlData, err := yaml.Marshal(rules)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal rules: %w", err)
+	}
+
+	return ExportMermaid(yamlData, defaultConditionName)
+}
+
 func ExportMermaid(yamlString []byte, defaultConditionName string) (string, error) {
 	// Parse the YAML into a Rule struct
 	var rules Rules
