@@ -11,7 +11,7 @@ conditions:
         return true
       }
     true:
-      description: Execute ruleset3
+      description: Executing ruleset3 - terminating
       action: |
         function() {
           debug(executeRuleSet3(context));

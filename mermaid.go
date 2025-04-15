@@ -2,6 +2,7 @@ package yabre
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"gopkg.in/yaml.v2"
@@ -40,7 +41,7 @@ func ExportMermaid(yamlString []byte, defaultConditionName string) (string, erro
 	}
 
 	for _, condition := range rules.Conditions {
-		renderCondition(&condition, &mermaid)
+		renderCondition(rules.Conditions, &condition, &mermaid)
 	}
 
 	result := mermaid.String()
@@ -49,40 +50,49 @@ func ExportMermaid(yamlString []byte, defaultConditionName string) (string, erro
 
 func declareCondition(condition *Condition, mermaid *strings.Builder) {
 	mermaid.WriteString(fmt.Sprintf("    %s{\"`%s`\"}\n", condition.Name, escape(ifEmpty(condition.Description, condition.Name))))
-	if condition.True != nil {
-		if condition.True.Action != "" {
-			mermaid.WriteString(fmt.Sprintf("    %s_true[\"%s\"]\n", condition.Name, escape(ifEmpty(condition.True.Description, condition.Name+"_true"))))
-		}
 
-		if condition.True.Terminate {
-			mermaid.WriteString(fmt.Sprintf("    %s_true_end((( )))\n", condition.Name))
-		}
-	}
+	conditionName := condition.Name
 
-	if condition.False != nil {
-		if condition.False.Action != "" {
-			mermaid.WriteString(fmt.Sprintf("    %s_false[\"%s\"]\n", condition.Name, escape(ifEmpty(condition.False.Description, condition.Name+"_false"))))
-		}
+	decisions := []*Decision{condition.True, condition.False}
+	for _, decision := range decisions {
+		if decision != nil {
+			decisionValue := strconv.FormatBool(decision.Value)
+			if decision.Action != "" {
+				mermaid.WriteString(fmt.Sprintf("    %s_%s[\"%s\"]\n", conditionName, decisionValue, escape(ifEmpty(decision.Description, conditionName+"_"+decisionValue))))
+			}
 
-		if condition.False.Terminate {
-			mermaid.WriteString(fmt.Sprintf("    %s_false_end((( )))\n", condition.Name))
+			if decision.Terminate {
+				mermaid.WriteString(fmt.Sprintf("    %s_%s_end((( )))\n", conditionName, decisionValue))
+			}
 		}
 	}
 }
 
-func renderCondition(condition *Condition, mermaid *strings.Builder) {
-	if condition.True != nil {
-		renderDecision(condition, condition.True, mermaid)
-	}
-	if condition.False != nil {
-		renderDecision(condition, condition.False, mermaid)
+func renderCondition(conditions map[string]Condition, condition *Condition, mermaid *strings.Builder) {
+	decisions := []*Decision{condition.True, condition.False}
+	for _, decision := range decisions {
+		if decision != nil {
+			renderDecision(conditions, condition, decision, mermaid)
+		}
 	}
 }
 
 func renderDecision(
+	conditions map[string]Condition,
 	condition *Condition,
 	decision *Decision,
 	mermaid *strings.Builder) {
+
+	optionalDescription := ""
+	// Check whether the condition, referenced in Next, is defined in this ruleset or is external
+	// External conditions are not declared in `declareCondition` and thus don't show descriptions by default
+	// For such conditions, we need to add the description to the block explicitly
+	if decision.Next != "" && decision.Description != "" {
+		_, isInternal := conditions[decision.Next]
+		if !isInternal {
+			optionalDescription = fmt.Sprintf("[%s]", decision.Description)
+		}
+	}
 
 	if decision.Action != "" {
 		// connection from condition to True/False action
@@ -90,7 +100,7 @@ func renderDecision(
 
 		if decision.Next != "" {
 			// connection from True/False action to next condition
-			mermaid.WriteString(fmt.Sprintf("    %s --> %s\n", decision.Name, decision.Next))
+			mermaid.WriteString(fmt.Sprintf("    %s --> %s%s\n", decision.Name, decision.Next, optionalDescription))
 		}
 
 		if decision.Terminate {
@@ -100,7 +110,7 @@ func renderDecision(
 	} else {
 		if decision.Next != "" {
 			// connection from condition to next condition
-			mermaid.WriteString(fmt.Sprintf("    %s --> |%t| %s\n", condition.Name, decision.Value, decision.Next))
+			mermaid.WriteString(fmt.Sprintf("    %s --> |%t| %s%s\n", condition.Name, decision.Value, decision.Next, optionalDescription))
 		}
 
 		if decision.Terminate {
