@@ -1,0 +1,10 @@
+name: settings
+
+scripts: |
+  function defaults() {
+    context.TextRuleSet1 = "RuleSet1 executed";
+    context.TextRuleSet2 = "RuleSet2 executed";
+    context.TextRuleSet3 = "RuleSet3 executed";
+  }
+
+  defaults();

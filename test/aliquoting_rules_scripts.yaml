@@ -1,0 +1,14 @@
+name: aliquoting-rules-scripts
+
+scripts: |
+      function getPendingOrders(orders = []) {
+        return orders.filter(oi => oi.State === 'pending');
+      }
+
+      function getPendingProducts(products = []) {
+        return products.filter(p => p.State === 'pending');
+      }
+
+      function getPowderProducts(products = []) {
+        return products.filter(p => p.ProductType === 'powder');
+      }

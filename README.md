@@ -9,6 +9,10 @@ flowchart LR
 
 ```
 
+## Architecture
+
+[High Level Architecture Diagram](./doc/ARCH.md)
+
 ## Features
 
 - Define flexible business rules using a declarative YAML syntax and javascript
@@ -17,6 +21,8 @@ flowchart LR
 - Provide a debug callback function to log and monitor the execution of rules
 - Terminate rule execution based on specific conditions
 - Update the context during rule execution to store and manipulate data
+- Support for modular rule sets through a library system
+- Ability to organize rules across multiple files with dependencies
 
 ## Usage
 
@@ -30,6 +36,8 @@ import "github.com/aleybovich/yabre"
 
    ```go
    yamlData := `
+   name: simple-rules
+   
    conditions:
      weight_less_500:
        default: true
@@ -72,7 +80,26 @@ Note: context is `interface{}` so it can be any type of variable. A `Struct` typ
 
    ```go
    context := MyContext{Weight: 450}
+   
+   // Option 1: Using a single YAML file (deprecated but still supported)
    runner, err := yabre.NewRulesRunnerFromYaml(yamlData, &context)
+   if err != nil {
+       // Handle the error
+   }
+   
+   // Option 2: Using a rules library (recommended)
+   library, err := yabre.NewRulesLibrary(yabre.RulesLibrarySettings{
+       BasePath: "./rules", // Directory containing rule files
+   })
+   if err != nil {
+       // Handle the error
+   }
+   
+   runner, err := yabre.NewRulesRunnerFromLibrary(
+       library,
+       "simple-rules", // Name of the rule set to use
+       &context,
+   )
    if err != nil {
        // Handle the error
    }
@@ -81,8 +108,8 @@ Note: context is `interface{}` so it can be any type of variable. A `Struct` typ
 4. Execute the rules:
 
    ```go
-   // No need to specify default starting condition `weight_less_500` as it's marked a s such in YAML data
-   updatedContext, err := runner.RunRules(&context, "")
+   // No need to specify default starting condition `weight_less_500` as it's marked as such in YAML data
+   updatedContext, err := runner.RunRules(&context, nil)
    if err != nil {
        // Handle the error
    }
@@ -95,11 +122,100 @@ Note: context is `interface{}` so it can be any type of variable. A `Struct` typ
    // Output: Condition met
    ```
 
+## Modular Rule Sets
+
+The Business Rules Engine now supports organizing rules across multiple files through a library system. This makes it easier to maintain complex rule sets and reuse common rules.
+
+### Rule File Structure
+
+Each rule file must include a `name` field to identify the rule set and can optionally specify dependencies:
+
+```yaml
+name: ruleset-name
+
+# Optional dependencies on other rule sets
+require:
+  - common-rules
+  - validation-rules
+
+scripts: |
+  function myFunction() {
+    // JavaScript code
+  }
+
+conditions:
+  # Your conditions here
+```
+
+### Using Rule Libraries
+
+To use the modular rule system:
+
+1. Create a Rules Library:
+
+```go
+// Create a rules library from a directory
+library, err := yabre.NewRulesLibrary(yabre.RulesLibrarySettings{
+    BasePath: "./rules",  // Directory containing your rule files
+})
+if err != nil {
+    // Handle error
+}
+
+// Or with embedded files
+//go:embed rules
+var rulesFS embed.FS
+library, err := yabre.NewRulesLibrary(yabre.RulesLibrarySettings{
+    BasePath:   ".", // Path is relative to the filesystem root
+    FileSystem: rulesFS,
+})
+```
+
+**Note**: When both BasePath and FileSystem are specified, the BasePath is interpreted relative to the FileSystem's root
+
+2. Create a rules runner from the library:
+
+```go
+context := MyContext{Weight: 450}
+runner, err := yabre.NewRulesRunnerFromLibrary(
+    library,        // The rules library
+    "main-ruleset", // Name of the main rule set to use
+    &context,       // Your context
+    // Optional: WithDebugCallback, WithGoFunction, etc.
+)
+if err != nil {
+    // Handle error
+}
+
+// Run rules as usual
+updatedContext, err := runner.RunRules(&context, nil)
+```
+
+### Dependency Resolution
+
+When loading a rule set, the engine automatically:
+- Resolves and loads all dependencies
+- Merges script sections from all rule sets
+- Merges conditions (ensuring no duplicates)
+
+This allows you to organize your rules logically, such as:
+- Common utility functions in a shared rule set
+- Domain-specific rules in specialized rule sets
+- Main orchestration logic in a top-level rule set
+
 ## Building the YAML Rules File
 
 The YAML rules file defines the conditions and actions that make up your business rules. Here's a guide on how to structure your YAML file:
 
 ```yaml
+# Required: Unique name for this rule set
+name: my-rule-set
+
+# Optional: Dependencies on other rule sets
+require:
+  - common-rules
+  - validation-rules
+
 conditions:
   condition_name:
     default: true
@@ -134,6 +250,8 @@ conditions:
 
 ### Key Components:
 
+- `name`: Required unique identifier for this rule set.
+- `require`: Optional list of other rule sets this rule set depends on.
 - `conditions`: The top-level key that contains all the conditions.
 - `condition_name`: A unique name for each condition.
 - `default`: (Optional) a default starting condition; only one condition may be set to `true`; if no condition has this property, then `startCondition` is required when calling `RunRules`. If neither is present, `RunRules` will return an error.
@@ -149,7 +267,7 @@ conditions:
 
 Condition name should be lowercase alphanumeric symbols and `_` only. Ex. `weight_greater_500`
 
-Javascript functions can have any unique valid names; anonymous functions are also allowed and prefferred.
+Javascript functions can have any unique valid names; anonymous functions are also allowed and preferred.
 
 You can define multiple conditions within the `conditions` block. The engine will evaluate the conditions starting from the specified `startCondition` when calling `RunRules`; if `startCondition` is not provided, the engine will look for a condition with `default` property that equals `true`.
 
@@ -165,7 +283,19 @@ add := func(a, b int) int {
     return a + b
 }
 
-runner, err := yabre.NewRulesRunnerFromYaml("rules.yaml", &context, yabre.WithGoFunction("add", add))
+// Using the library-based approach
+library, err := yabre.NewRulesLibrary(yabre.RulesLibrarySettings{
+    BasePath: "./rules",
+})
+if err != nil {
+    // Handle error
+}
+
+runner, err := yabre.NewRulesRunnerFromLibrary(
+    library,
+    "my-rule-set",
+    &context,
+    yabre.WithGoFunction("add", add))
 ```
 
 In your YAML rules file, you can then use the `add` function:
@@ -197,7 +327,18 @@ func multiply(a, b float64) float64 {
     return a * b
 }
 
-runner, err := yabre.NewRulesRunnerFromYaml("rules.yaml", &context, 
+// Using the library-based approach
+library, err := yabre.NewRulesLibrary(yabre.RulesLibrarySettings{
+    BasePath: "./rules",
+})
+if err != nil {
+    // Handle error
+}
+
+runner, err := yabre.NewRulesRunnerFromLibrary(
+    library,
+    "my-rule-set",
+    &context,
     yabre.WithGoFunction("multiply", multiply))
 ```
 
@@ -210,7 +351,10 @@ func concat(a, b string) string {
     return a + b
 }
 
-runner, err := yabre.NewRulesRunnerFromYaml("rules.yaml", &context, 
+runner, err := yabre.NewRulesRunnerFromLibrary(
+    library,
+    "my-rule-set",
+    &context,
     yabre.WithGoFunction("concat", concat))
 ```
 
@@ -239,7 +383,10 @@ func divide(a, b float64) (float64, error) {
     return a / b, nil
 }
 
-runner, err := yabre.NewRulesRunnerFromYaml("rules.yaml", &context, 
+runner, err := yabre.NewRulesRunnerFromLibrary(
+    library,
+    "my-rule-set",
+    &context,
     yabre.WithGoFunction("divide", divide))
 ```
 
@@ -269,14 +416,25 @@ By using `GoFuncWrapper`, you can write clear, strongly-typed functions while st
 You can provide a debug callback function to log and monitor the execution of rules using the `WithDebugCallback` option:
 
 ```go
-runner, err := yabre.NewRulesRunnerFromYaml("rules.yaml", &context, yabre.WithDebugCallback(
-    func(data ...interface{}) {
-      if len(data) > 0 {
-        fmt.Printf("Debug: %v\n", data)
-      } else {
-        fmt.Println("debug callback data is empty")
-      }
-    }))
+library, err := yabre.NewRulesLibrary(yabre.RulesLibrarySettings{
+    BasePath: "./rules",
+})
+if err != nil {
+    // Handle error
+}
+
+runner, err := yabre.NewRulesRunnerFromLibrary(
+    library,
+    "my-rule-set",
+    &context,
+    yabre.WithDebugCallback(
+        func(data ...interface{}) {
+          if len(data) > 0 {
+            fmt.Printf("Debug: %v\n", data)
+          } else {
+            fmt.Println("debug callback data is empty")
+          }
+        }))
 ```
 
 In your YAML rules file, you can use the `debug` function to log messages:
@@ -301,10 +459,21 @@ The Business Rules Engine provides a `WithDecisionCallback` option that allows y
 To use the decision callback, you can initialize the rules runner with the `WithDecisionCallback` option:
 
 ```go
-runner, err := yabre.NewRulesRunnerFromYaml(yamlData, &context, yabre.WithDecisionCallback(
-    func(msg string, args ...interface{}) {
-        fmt.Printf("Decision: %s\n", fmt.Sprintf(msg, args...))
-    }))
+library, err := yabre.NewRulesLibrary(yabre.RulesLibrarySettings{
+    BasePath: "./rules",
+})
+if err != nil {
+    // Handle error
+}
+
+runner, err := yabre.NewRulesRunnerFromLibrary(
+    library,
+    "my-rule-set",
+    &context,
+    yabre.WithDecisionCallback(
+        func(msg string, args ...interface{}) {
+            fmt.Printf("Decision: %s\n", fmt.Sprintf(msg, args...))
+        }))
 ```
 
 In this example, the callback function simply logs the decision message. You can customize the callback function to handle the decision information in any way that suits your needs, such as logging to a file, sending notifications, or updating a monitoring system.
@@ -320,10 +489,12 @@ Please note that the decision callback is an optional feature, and you can choos
 
 The Business Rules Engine module provides a convenient way to generate Mermaid flowcharts from your YAML rules file. This allows you to visualize the flow of your business rules and understand the decision-making process.
 
-To generate a Mermaid flowchart from your YAML rules, you can use the `ConvertToMermaid` function:
+To generate a Mermaid flowchart from your YAML rules, you can use the `ExportMermaid` function:
 
 ```go
 yamlString := `
+name: flowchart-example
+
 conditions:
   check_condition_1:
     description: Check condition 1
@@ -355,17 +526,17 @@ conditions:
       terminate: true
 `
 
-mermaidCode, err := yabre.ConvertToMermaid(yamlString)
+mermaidCode, err := yabre.ExportMermaid([]byte(yamlString), "check_condition_1")
 if err != nil {
     // Handle the error
 }
 
-fmt.Println(*mermaidCode)
+fmt.Println(mermaidCode)
 ```
 
 In this example, we have a YAML rules file that defines two conditions: `check_condition_1` and `check_condition_2`. Each condition has a `true` and `false` branch, specifying the actions to be taken based on the condition's evaluation.
 
-By calling the `ConvertToMermaid` function with the YAML string, it generates the corresponding Mermaid flowchart code. The generated code will look like this:
+By calling the `ExportMermaid` function with the YAML string, it generates the corresponding Mermaid flowchart code. The generated code will look like this:
 
 ```
 flowchart TD

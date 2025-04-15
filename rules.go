@@ -9,6 +9,8 @@ import (
 )
 
 type Rules struct {
+	Name             string               `yaml:"name"`
+	Require          []string             `yaml:"require,omitempty"`
 	Scripts          string               `yaml:"scripts"`
 	Conditions       map[string]Condition `yaml:"conditions"`
 	DefaultCondition *Condition           `yaml:"-"`

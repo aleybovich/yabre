@@ -64,6 +64,36 @@ func (runner *RulesRunner[Context]) getFunctionName(name string) string {
 	return name
 }
 
+func NewRulesRunnerFromLibrary[Context interface{}](
+	library *RulesLibrary,
+	rulesName string,
+	context *Context,
+	options ...WithOption[Context],
+) (*RulesRunner[Context], error) {
+	// Load rules and their dependencies from library
+	rules, err := library.LoadRules(rulesName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load rules: %w", err)
+	}
+
+	runner := &RulesRunner[Context]{
+		Context:          context,
+		Rules:            rules,
+		functionNames:    map[string]string{},
+		decisionCallback: func(msg string, args ...interface{}) {},
+	}
+
+	// Execute options
+	for _, op := range options {
+		if err := op(runner); err != nil {
+			return nil, err
+		}
+	}
+
+	return runner, nil
+}
+
+// Deprecated: Use NewRulesRunnerFromLibrary instead
 func NewRulesRunnerFromYaml[Context interface{}](yamlData []byte, context *Context, options ...WithOption[Context]) (*RulesRunner[Context], error) {
 	runner := &RulesRunner[Context]{
 		Context:          context,

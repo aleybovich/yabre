@@ -1,3 +1,7 @@
+[0.8.0]
+- Support for modular rule sets through a library system
+- Ability to organize rules across multiple files with dependencies
+
 [0.7.0]
 - Changed: hnhanced `WithGoFunction` with support of any function signature; `goFuncWrapper` is now internal which is a breaking change
 

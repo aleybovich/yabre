@@ -1,6 +1,7 @@
 package yabre
 
 import (
+	"embed"
 	"fmt"
 	"os"
 	"strings"
@@ -51,9 +52,9 @@ func TestRunnerGoFunctions(t *testing.T) {
 		return a + b, nil
 	}
 
-	yamlData, err := loadYaml("test/go_rules.yaml")
+	rl, err := NewRulesLibrary(RulesLibrarySettings{BasePath: "./test"})
 	assert.NoError(t, err)
-	runner, err := NewRulesRunnerFromYaml(yamlData, &context,
+	runner, err := NewRulesRunnerFromLibrary(rl, "go-rules", &context,
 		WithDebugCallback[TestContext](
 			func(data ...interface{}) {
 				if len(data) > 0 {
@@ -80,9 +81,9 @@ func TestRunnerGoFunctionsVariadicArgs(t *testing.T) {
 		return a + float64(b), nil
 	}
 
-	yamlData, err := loadYaml("test/go_rules.yaml")
+	rl, err := NewRulesLibrary(RulesLibrarySettings{BasePath: "./test"})
 	assert.NoError(t, err)
-	runner, err := NewRulesRunnerFromYaml(yamlData, &context,
+	runner, err := NewRulesRunnerFromLibrary(rl, "go-rules", &context,
 		WithDebugCallback[TestContext](
 			func(data ...interface{}) {
 				if len(data) > 0 {
@@ -98,13 +99,16 @@ func TestRunnerGoFunctionsVariadicArgs(t *testing.T) {
 	assert.Equal(t, "Go function result: 5.2", debugMessage)
 }
 
-func TestRunnerUpdateContext(t *testing.T) {
+//go:embed test
+var testFs embed.FS
+
+func TestRunnerUpdateContextEmbedded(t *testing.T) {
 	type TestContext struct{ Value string }
 	context := TestContext{Value: "Initial"}
 
-	yamlData, err := loadYaml("test/update_context.yaml")
+	rl, err := NewRulesLibrary(RulesLibrarySettings{BasePath: "./test", FileSystem: testFs})
 	assert.NoError(t, err)
-	runner, err := NewRulesRunnerFromYaml(yamlData, &context)
+	runner, err := NewRulesRunnerFromLibrary(rl, "update-context", &context)
 	assert.NoError(t, err)
 
 	updatedContext, err := runner.RunRules(&context, nil)
@@ -113,7 +117,7 @@ func TestRunnerUpdateContext(t *testing.T) {
 	assert.Equal(t, "Updated", updatedContext.Value)
 }
 
-func TestRunnerAliquoting(t *testing.T) {
+func TestRunnerAliquotingEmbedded(t *testing.T) {
 	// Create a sample context
 	context := RecipeContext{
 		Container: Container{Amount: 2100},
@@ -129,12 +133,13 @@ func TestRunnerAliquoting(t *testing.T) {
 
 	decisions := []string{}
 
-	yamlData, err := loadYaml("test/aliquoting_rules.yaml")
+	rl, err := NewRulesLibrary(RulesLibrarySettings{BasePath: "test", FileSystem: testFs})
 
 	assert.NoError(t, err)
 
-	runner, err := NewRulesRunnerFromYaml(
-		yamlData,
+	runner, err := NewRulesRunnerFromLibrary(
+		rl,
+		"aliquoting-rules",
 		&context,
 		WithDebugCallback[RecipeContext](
 			func(data ...interface{}) {
@@ -219,7 +224,7 @@ func TestRunnerAliquoting(t *testing.T) {
 
 func TestLoanApproval(t *testing.T) {
 	// Load the YAML rules
-	yamlData, err := loadYaml("test/loan_approval.yaml")
+	rl, err := NewRulesLibrary(RulesLibrarySettings{BasePath: "test", FileSystem: testFs})
 	assert.NoError(t, err)
 
 	// Test case for the happy path
@@ -237,7 +242,7 @@ func TestLoanApproval(t *testing.T) {
 			LoanAmount: 40000,
 		}
 
-		runner, err := NewRulesRunnerFromYaml(yamlData, &context)
+		runner, err := NewRulesRunnerFromLibrary(rl, "loan-approval", &context)
 		assert.NoError(t, err)
 
 		_, err = runner.RunRules(&context, nil)
@@ -382,7 +387,8 @@ func TestLoanApproval(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			runner, err := NewRulesRunnerFromYaml(yamlData, &tc.context)
+			runner, err := NewRulesRunnerFromLibrary(rl, "loan-approval", &tc.context)
+
 			assert.NoError(t, err)
 
 			_, err = runner.RunRules(&tc.context, nil)
