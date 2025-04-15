@@ -36,26 +36,7 @@ func ExportMermaid(yamlString []byte, defaultConditionName string) (string, erro
 
 	// Declare all elements
 	for _, condition := range rules.Conditions {
-		mermaid.WriteString(fmt.Sprintf("    %s{\"`%s`\"}\n", condition.Name, escape(ifEmpty(condition.Description, condition.Name))))
-		if condition.True != nil {
-			if condition.True.Action != "" {
-				mermaid.WriteString(fmt.Sprintf("    %s_true[\"`%s`\"]\n", condition.Name, escape(ifEmpty(condition.True.Description, condition.Name+"_true"))))
-			}
-
-			if condition.True.Terminate {
-				mermaid.WriteString(fmt.Sprintf("    %s_true_end((( )))\n", condition.Name))
-			}
-		}
-
-		if condition.False != nil {
-			if condition.False.Action != "" {
-				mermaid.WriteString(fmt.Sprintf("    %s_false[\"%s\"]\n", condition.Name, escape(ifEmpty(condition.False.Description, condition.Name+"_false"))))
-			}
-
-			if condition.False.Terminate {
-				mermaid.WriteString(fmt.Sprintf("    %s_false_end((( )))\n", condition.Name))
-			}
-		}
+		declareCondition(&condition, &mermaid)
 	}
 
 	for _, condition := range rules.Conditions {
@@ -66,21 +47,42 @@ func ExportMermaid(yamlString []byte, defaultConditionName string) (string, erro
 	return result, nil
 }
 
-func renderCondition(condition *Condition, mermaid *strings.Builder) error {
+func declareCondition(condition *Condition, mermaid *strings.Builder) {
+	mermaid.WriteString(fmt.Sprintf("    %s{\"`%s`\"}\n", condition.Name, escape(ifEmpty(condition.Description, condition.Name))))
+	if condition.True != nil {
+		if condition.True.Action != "" {
+			mermaid.WriteString(fmt.Sprintf("    %s_true[\"%s\"]\n", condition.Name, escape(ifEmpty(condition.True.Description, condition.Name+"_true"))))
+		}
+
+		if condition.True.Terminate {
+			mermaid.WriteString(fmt.Sprintf("    %s_true_end((( )))\n", condition.Name))
+		}
+	}
+
+	if condition.False != nil {
+		if condition.False.Action != "" {
+			mermaid.WriteString(fmt.Sprintf("    %s_false[\"%s\"]\n", condition.Name, escape(ifEmpty(condition.False.Description, condition.Name+"_false"))))
+		}
+
+		if condition.False.Terminate {
+			mermaid.WriteString(fmt.Sprintf("    %s_false_end((( )))\n", condition.Name))
+		}
+	}
+}
+
+func renderCondition(condition *Condition, mermaid *strings.Builder) {
 	if condition.True != nil {
 		renderDecision(condition, condition.True, mermaid)
 	}
 	if condition.False != nil {
 		renderDecision(condition, condition.False, mermaid)
 	}
-
-	return nil
 }
 
 func renderDecision(
 	condition *Condition,
 	decision *Decision,
-	mermaid *strings.Builder) error {
+	mermaid *strings.Builder) {
 
 	if decision.Action != "" {
 		// connection from condition to True/False action
@@ -106,7 +108,6 @@ func renderDecision(
 			mermaid.WriteString(fmt.Sprintf("    %s --> |%t| %s_end\n", condition.Name, decision.Value, decision.Name))
 		}
 	}
-	return nil
 }
 
 func ifEmpty(first, second string) string {
