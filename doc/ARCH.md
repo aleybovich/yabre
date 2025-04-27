@@ -1,3 +1,4 @@
+![1000007735](https://github.com/user-attachments/assets/4344a763-90ad-4ef5-a275-439096a455c9)
 [Back to README](../README.md)
 
 ```mermaid
@@ -17,7 +18,8 @@ flowchart TD
     
     Runner --> |Generates| Mermaid[Mermaid Diagrams]
     
-    subgraph Execution
+    subgraph Execution![1000007735](https://github.com/user-attachments/assets/3de347a6-6ae0-4d89-8d76-f457edf6203e)
+
         Check --> |Evaluates| CheckResult{Check Result}
         CheckResult --> |True| TrueBranch[True Branch]
         CheckResult --> |False| FalseBranch[True Branch]
