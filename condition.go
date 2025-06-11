@@ -1,6 +1,7 @@
 package yabre
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/dop251/goja"
@@ -32,7 +33,7 @@ func (cr *Decision) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	}
 
 	if dsn.Next != "" && dsn.Terminate {
-		return fmt.Errorf("next and terminate cannot be used together")
+		return errors.New("next and terminate cannot be used together")
 	}
 
 	*cr = Decision(dsn)
@@ -53,7 +54,7 @@ func (runner *RulesRunner[Context]) runCondition(vm *goja.Runtime, rules *Rules,
 	}
 	checkResult, err := checkFunc(goja.Undefined())
 	if err != nil {
-		return fmt.Errorf("error evaluating check function %s: %v", checkFuncName, err)
+		return fmt.Errorf("error evaluating check function %s: %w", checkFuncName, err)
 	}
 
 	if checkResult.ToBoolean() {
@@ -84,7 +85,7 @@ func (runner *RulesRunner[Context]) runAction(vm *goja.Runtime, rules *Rules, re
 		}
 		_, err := actionFunc(goja.Undefined())
 		if err != nil {
-			return fmt.Errorf("error running action: %v", err)
+			return fmt.Errorf("error running action: %w", err)
 		}
 	}
 
@@ -96,7 +97,7 @@ func (runner *RulesRunner[Context]) runAction(vm *goja.Runtime, rules *Rules, re
 		runner.decisionCallback("Moving to next condition:[%s]", nextCondition.Name)
 		err = runner.runCondition(vm, rules, nextCondition)
 		if err != nil {
-			return fmt.Errorf("error while evaluating condition '%s': %v", result.Next, err)
+			return fmt.Errorf("error while evaluating condition '%s': %w", result.Next, err)
 		}
 	}
 

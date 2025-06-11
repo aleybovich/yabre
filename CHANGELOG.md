@@ -1,3 +1,13 @@
+[0.8.1]
+- Fixed: `goFuncWrapper` now properly handles nil arguments without panic
+- Fixed: `goFuncWrapper` now recovers from panics and converts them to errors
+- Added: Comprehensive unit tests for `condition.go` (15 test functions)
+- Added: Comprehensive unit tests for `rules.go` (12 test functions)
+- Added: Additional unit tests for `func_wrapper.go` covering edge cases (7 new test cases)
+- Added: Comprehensive edge case tests for the business rules engine in `runner_edge_cases_test.go`
+- Improved: Test coverage for variadic functions, nil handling, panic recovery, and complex type conversions
+- Improved: Test coverage for various rule engine scenarios including circular references, error propagation, concurrent execution, and performance with large datasets
+
 [0.8.0]
 - Support for modular rule sets through a library system
 - Ability to organize rules across multiple files with dependencies

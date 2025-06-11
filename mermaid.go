@@ -27,7 +27,7 @@ func ExportMermaid(yamlString []byte, defaultConditionName string) (string, erro
 	var rules Rules
 	err := yaml.Unmarshal(yamlString, &rules)
 	if err != nil {
-		return "", fmt.Errorf("error parsing YAML: %v", err)
+		return "", fmt.Errorf("error parsing YAML: %w", err)
 	}
 
 	var mermaid strings.Builder
@@ -36,24 +36,24 @@ func ExportMermaid(yamlString []byte, defaultConditionName string) (string, erro
 
 	// Declare all elements
 	for _, condition := range rules.Conditions {
-		mermaid.WriteString(fmt.Sprintf("    %s{\"`%s`\"}\n", condition.Name, escape(ifEmpty(condition.Description, condition.Name))))
+		fmt.Fprintf(&mermaid, "    %s{\"`%s`\"}\n", condition.Name, escape(ifEmpty(condition.Description, condition.Name)))
 		if condition.True != nil {
 			if condition.True.Action != "" {
-				mermaid.WriteString(fmt.Sprintf("    %s_true[\"`%s`\"]\n", condition.Name, escape(ifEmpty(condition.True.Description, condition.Name+"_true"))))
+				fmt.Fprintf(&mermaid, "    %s_true[\"`%s`\"]\n", condition.Name, escape(ifEmpty(condition.True.Description, condition.Name+"_true")))
 			}
 
 			if condition.True.Terminate {
-				mermaid.WriteString(fmt.Sprintf("    %s_true_end((( )))\n", condition.Name))
+				fmt.Fprintf(&mermaid, "    %s_true_end((( )))\n", condition.Name)
 			}
 		}
 
 		if condition.False != nil {
 			if condition.False.Action != "" {
-				mermaid.WriteString(fmt.Sprintf("    %s_false[\"%s\"]\n", condition.Name, escape(ifEmpty(condition.False.Description, condition.Name+"_false"))))
+				fmt.Fprintf(&mermaid, "    %s_false[\"%s\"]\n", condition.Name, escape(ifEmpty(condition.False.Description, condition.Name+"_false")))
 			}
 
 			if condition.False.Terminate {
-				mermaid.WriteString(fmt.Sprintf("    %s_false_end((( )))\n", condition.Name))
+				fmt.Fprintf(&mermaid, "    %s_false_end((( )))\n", condition.Name)
 			}
 		}
 	}
@@ -84,26 +84,26 @@ func renderDecision(
 
 	if decision.Action != "" {
 		// connection from condition to True/False action
-		mermaid.WriteString(fmt.Sprintf("    %s --> |%t| %s\n", condition.Name, decision.Value, decision.Name))
+		fmt.Fprintf(mermaid, "    %s --> |%t| %s\n", condition.Name, decision.Value, decision.Name)
 
 		if decision.Next != "" {
 			// connection from True/False action to next condition
-			mermaid.WriteString(fmt.Sprintf("    %s --> %s\n", decision.Name, decision.Next))
+			fmt.Fprintf(mermaid, "    %s --> %s\n", decision.Name, decision.Next)
 		}
 
 		if decision.Terminate {
 			// terminator from True/False action
-			mermaid.WriteString(fmt.Sprintf("    %s --> %s_end\n", decision.Name, decision.Name))
+			fmt.Fprintf(mermaid, "    %s --> %s_end\n", decision.Name, decision.Name)
 		}
 	} else {
 		if decision.Next != "" {
 			// connection from condition to next condition
-			mermaid.WriteString(fmt.Sprintf("    %s --> |%t| %s\n", condition.Name, decision.Value, decision.Next))
+			fmt.Fprintf(mermaid, "    %s --> |%t| %s\n", condition.Name, decision.Value, decision.Next)
 		}
 
 		if decision.Terminate {
 			// terminator from condition
-			mermaid.WriteString(fmt.Sprintf("    %s --> |%t| %s_end\n", condition.Name, decision.Value, decision.Name))
+			fmt.Fprintf(mermaid, "    %s --> |%t| %s_end\n", condition.Name, decision.Value, decision.Name)
 		}
 	}
 	return nil
