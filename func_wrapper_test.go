@@ -122,4 +122,129 @@ func TestGoFuncWrapper(t *testing.T) {
 		_, err3 := goFunctions["safeAdd"](-1, 3)
 		assert.EqualError(t, err3, "negative numbers not allowed")
 	})
+
+	t.Run("Variadic function with empty arguments", func(t *testing.T) {
+		f := func(prefix string, args ...int) interface{} {
+			return fmt.Sprintf("%s: %v", prefix, args)
+		}
+		wrapped := goFuncWrapper(f)
+		result, err := wrapped("numbers")
+		assert.NoError(t, err)
+		assert.Equal(t, "numbers: []", result)
+	})
+
+	t.Run("Variadic function with multiple arguments", func(t *testing.T) {
+		f := func(prefix string, args ...int) interface{} {
+			sum := 0
+			for _, v := range args {
+				sum += v
+			}
+			return fmt.Sprintf("%s: sum=%d", prefix, sum)
+		}
+		wrapped := goFuncWrapper(f)
+		result, err := wrapped("total", 1, 2, 3, 4, 5)
+		assert.NoError(t, err)
+		assert.Equal(t, "total: sum=15", result)
+	})
+
+	t.Run("Function returning no values", func(t *testing.T) {
+		f := func() {
+			// Function with no return values
+		}
+		wrapped := goFuncWrapper(f)
+		_, err := wrapped()
+		assert.EqualError(t, err, "function must return (any) or (any, error)")
+	})
+
+	t.Run("Function returning more than 2 values", func(t *testing.T) {
+		f := func() (int, string, error) {
+			return 42, "hello", nil
+		}
+		wrapped := goFuncWrapper(f)
+		_, err := wrapped()
+		assert.EqualError(t, err, "function must return (any) or (any, error)")
+	})
+
+	t.Run("Nil argument handling", func(t *testing.T) {
+		f := func(a interface{}) interface{} {
+			if a == nil {
+				return "got nil"
+			}
+			return fmt.Sprintf("got %v", a)
+		}
+		wrapped := goFuncWrapper(f)
+		result, err := wrapped(nil)
+		assert.NoError(t, err)
+		assert.Equal(t, "got nil", result)
+	})
+
+	t.Run("Panic recovery", func(t *testing.T) {
+		f := func(a int) interface{} {
+			if a == 0 {
+				panic("division by zero")
+			}
+			return 10 / a
+		}
+		wrapped := goFuncWrapper(f)
+		_, err := wrapped(0)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "panic recovered")
+		assert.Contains(t, err.Error(), "division by zero")
+	})
+
+	t.Run("Interface to complex type conversions", func(t *testing.T) {
+		// Struct conversion
+		type TestStruct struct {
+			Name  string
+			Value int
+		}
+		f1 := func(data interface{}) interface{} {
+			if s, ok := data.(map[string]interface{}); ok {
+				return TestStruct{
+					Name:  s["name"].(string),
+					Value: int(s["value"].(float64)),
+				}
+			}
+			return nil
+		}
+		wrapped1 := goFuncWrapper(f1)
+		input := map[string]interface{}{"name": "test", "value": float64(42)}
+		result1, err := wrapped1(input)
+		assert.NoError(t, err)
+		expected := TestStruct{Name: "test", Value: 42}
+		assert.Equal(t, expected, result1)
+
+		// Slice conversion
+		f2 := func(data interface{}) interface{} {
+			if slice, ok := data.([]interface{}); ok {
+				result := make([]int, len(slice))
+				for i, v := range slice {
+					result[i] = int(v.(float64))
+				}
+				return result
+			}
+			return nil
+		}
+		wrapped2 := goFuncWrapper(f2)
+		result2, err := wrapped2([]interface{}{float64(1), float64(2), float64(3)})
+		assert.NoError(t, err)
+		assert.Equal(t, []int{1, 2, 3}, result2)
+
+		// Map conversion
+		f3 := func(data interface{}) interface{} {
+			if m, ok := data.(map[string]interface{}); ok {
+				result := make(map[string]string)
+				for k, v := range m {
+					result[k] = fmt.Sprintf("%v", v)
+				}
+				return result
+			}
+			return nil
+		}
+		wrapped3 := goFuncWrapper(f3)
+		result3, err := wrapped3(map[string]interface{}{"a": 1, "b": "hello"})
+		assert.NoError(t, err)
+		expected3 := map[string]string{"a": "1", "b": "hello"}
+		assert.Equal(t, expected3, result3)
+	})
 }

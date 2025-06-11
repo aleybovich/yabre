@@ -1,6 +1,7 @@
 package yabre
 
 import (
+	"errors"
 	"fmt"
 	"reflect"
 )
@@ -37,7 +38,7 @@ func checkVariadicAnySignature(fn any) (bool, error) {
 	fnType := reflect.TypeOf(fn)
 
 	if fnType.Kind() != reflect.Func {
-		return false, fmt.Errorf("not a function")
+		return false, errors.New("not a function")
 	}
 
 	if fnType.NumIn() != 1 || fnType.NumOut() != 2 {
