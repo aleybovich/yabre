@@ -6,43 +6,41 @@ import (
 	"github.com/dop251/goja"
 )
 
-type RulesRunner[Context interface{}] struct {
+type RulesRunner[Context any] struct {
 	Rules         *Rules
 	Context       *Context
-	debugCallback func(...interface{})
-	goFunctions   map[string]func(...interface{}) (interface{}, error)
+	debugCallback func(...any)
+	goFunctions   map[string]func(...any) (any, error)
 	// callback to be called when a decision is made
-	decisionCallback func(msg string, args ...interface{})
-	// mapping of js functions in business rules to standard names
-	functionNames map[string]string
+	decisionCallback func(msg string, args ...any)
 }
 
-type WithOption[Context interface{}] func(*RulesRunner[Context]) error
+type WithOption[Context any] func(*RulesRunner[Context]) error
 
 // WithDebugCallback sets the DebugCallback option
-func WithDebugCallback[Context interface{}](callback func(...interface{})) WithOption[Context] {
+func WithDebugCallback[Context any](callback func(...any)) WithOption[Context] {
 	return func(runner *RulesRunner[Context]) error {
 		runner.debugCallback = callback
 		return nil
 	}
 }
 
-func WithGoFunction[Context interface{}](name string, f any) WithOption[Context] {
+func WithGoFunction[Context any](name string, f any) WithOption[Context] {
 	return func(runner *RulesRunner[Context]) error {
 		if runner.goFunctions == nil {
-			runner.goFunctions = make(map[string]func(...interface{}) (interface{}, error))
+			runner.goFunctions = make(map[string]func(...any) (any, error))
 		}
 
-		var fn func(...interface{}) (interface{}, error)
+		var fn func(...any) (any, error)
 
-		// if the function is NOT of expected signature `func(...interface{}) (interface{}, error)` then wrap it
+		// if the function is NOT of expected signature `func(...any) (any, error)` then wrap it
 		dontWrap, err := checkVariadicAnySignature(f)
 		if err != nil {
 			return fmt.Errorf("invalid go function signature: %w", err)
 		} else if !dontWrap {
 			fn = goFuncWrapper(f)
 		} else {
-			fn = f.(func(...interface{}) (interface{}, error))
+			fn = f.(func(...any) (any, error))
 		}
 
 		runner.goFunctions[name] = fn
@@ -50,21 +48,14 @@ func WithGoFunction[Context interface{}](name string, f any) WithOption[Context]
 	}
 }
 
-func WithDecisionCallback[Context interface{}](callback func(msg string, args ...interface{})) WithOption[Context] {
+func WithDecisionCallback[Context any](callback func(msg string, args ...any)) WithOption[Context] {
 	return func(runner *RulesRunner[Context]) error {
 		runner.decisionCallback = callback
 		return nil
 	}
 }
 
-func (runner *RulesRunner[Context]) getFunctionName(name string) string {
-	if functionName, ok := runner.functionNames[name]; ok {
-		return functionName
-	}
-	return name
-}
-
-func NewRulesRunnerFromLibrary[Context interface{}](
+func NewRulesRunnerFromLibrary[Context any](
 	library *RulesLibrary,
 	rulesName string,
 	context *Context,
@@ -79,8 +70,7 @@ func NewRulesRunnerFromLibrary[Context interface{}](
 	runner := &RulesRunner[Context]{
 		Context:          context,
 		Rules:            rules,
-		functionNames:    map[string]string{},
-		decisionCallback: func(msg string, args ...interface{}) {},
+		decisionCallback: func(msg string, args ...any) {},
 	}
 
 	// Execute options
@@ -89,32 +79,6 @@ func NewRulesRunnerFromLibrary[Context interface{}](
 			return nil, err
 		}
 	}
-
-	return runner, nil
-}
-
-// Deprecated: Use NewRulesRunnerFromLibrary instead
-func NewRulesRunnerFromYaml[Context interface{}](yamlData []byte, context *Context, options ...WithOption[Context]) (*RulesRunner[Context], error) {
-	runner := &RulesRunner[Context]{
-		Context:          context,
-		functionNames:    map[string]string{},
-		decisionCallback: func(msg string, args ...interface{}) {},
-	}
-
-	// Execute options
-	for _, op := range options {
-		err := op(runner)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	// Load the rules from the YAML data
-	rules, err := runner.loadRulesFromYaml(yamlData)
-	if err != nil {
-		return nil, err
-	}
-	runner.Rules = rules
 
 	return runner, nil
 }

@@ -3,7 +3,6 @@ package yabre
 import (
 	"embed"
 	"fmt"
-	"os"
 	"strings"
 	"testing"
 
@@ -48,15 +47,16 @@ func TestRunnerGoFunctions(t *testing.T) {
 	var debugMessage string
 	context := TestContext{}
 
-	add := func(a, b float64) (interface{}, error) {
+	add := func(a, b float64) (any, error) {
 		return a + b, nil
 	}
 
-	rl, err := NewRulesLibrary(RulesLibrarySettings{BasePath: "./test"})
+	rl, valResult, err := NewRulesLibrary(RulesLibrarySettings{BasePath: "./test"})
 	assert.NoError(t, err)
+	assertBREValidationWarnings(t, valResult)
 	runner, err := NewRulesRunnerFromLibrary(rl, "go-rules", &context,
 		WithDebugCallback[TestContext](
-			func(data ...interface{}) {
+			func(data ...any) {
 				if len(data) > 0 {
 					debugMessage = fmt.Sprintf("%v", data[0])
 				}
@@ -74,18 +74,19 @@ func TestRunnerGoFunctionsVariadicArgs(t *testing.T) {
 	var debugMessage string
 	context := TestContext{}
 
-	add := func(args ...interface{}) (interface{}, error) {
+	add := func(args ...any) (any, error) {
 		a := args[0].(float64) // 2.2
 		b := args[1].(int64)   // 3
 
 		return a + float64(b), nil
 	}
 
-	rl, err := NewRulesLibrary(RulesLibrarySettings{BasePath: "./test"})
+	rl, valResult, err := NewRulesLibrary(RulesLibrarySettings{BasePath: "./test"})
 	assert.NoError(t, err)
+	assertBREValidationWarnings(t, valResult)
 	runner, err := NewRulesRunnerFromLibrary(rl, "go-rules", &context,
 		WithDebugCallback[TestContext](
-			func(data ...interface{}) {
+			func(data ...any) {
 				if len(data) > 0 {
 					debugMessage = fmt.Sprintf("%v", data[0])
 				}
@@ -106,8 +107,9 @@ func TestRunnerUpdateContextEmbedded(t *testing.T) {
 	type TestContext struct{ Value string }
 	context := TestContext{Value: "Initial"}
 
-	rl, err := NewRulesLibrary(RulesLibrarySettings{BasePath: "./test", FileSystem: testFs})
+	rl, valResult, err := NewRulesLibrary(RulesLibrarySettings{BasePath: "./test", FileSystem: testFs})
 	assert.NoError(t, err)
+	assertBREValidationWarnings(t, valResult)
 	runner, err := NewRulesRunnerFromLibrary(rl, "update-context", &context)
 	assert.NoError(t, err)
 
@@ -129,25 +131,26 @@ func TestRunnerAliquotingEmbedded(t *testing.T) {
 		Products: []Product{},
 	}
 
-	var debugData interface{}
+	var debugData any
 
 	decisions := []string{}
 
-	rl, err := NewRulesLibrary(RulesLibrarySettings{BasePath: "test", FileSystem: testFs})
+	rl, valResult, err := NewRulesLibrary(RulesLibrarySettings{BasePath: "test", FileSystem: testFs})
 
 	assert.NoError(t, err)
+	assertBREValidationWarnings(t, valResult)
 
 	runner, err := NewRulesRunnerFromLibrary(
 		rl,
 		"aliquoting-rules",
 		&context,
 		WithDebugCallback[RecipeContext](
-			func(data ...interface{}) {
+			func(data ...any) {
 				if len(data) > 0 {
 					debugData = data[0]
 				}
 			}),
-		WithDecisionCallback[RecipeContext](func(msg string, args ...interface{}) {
+		WithDecisionCallback[RecipeContext](func(msg string, args ...any) {
 			msg = fmt.Sprintf(msg, args...)
 			//fmt.Print(msg)
 			decisions = append(decisions, strings.Trim(strings.TrimLeft(msg, "\t"), " "))
@@ -224,8 +227,9 @@ func TestRunnerAliquotingEmbedded(t *testing.T) {
 
 func TestLoanApproval(t *testing.T) {
 	// Load the YAML rules
-	rl, err := NewRulesLibrary(RulesLibrarySettings{BasePath: "test", FileSystem: testFs})
+	rl, valResult, err := NewRulesLibrary(RulesLibrarySettings{BasePath: "test", FileSystem: testFs})
 	assert.NoError(t, err)
+	assertBREValidationWarnings(t, valResult)
 
 	// Test case for the happy path
 	t.Run("HappyPath", func(t *testing.T) {
@@ -413,13 +417,4 @@ type Applicant struct {
 	Income      int
 	Debt        int
 	CreditScore int
-}
-
-func loadYaml(fileName string) ([]byte, error) {
-	yamlFile, err := os.ReadFile(fileName)
-	if err != nil {
-		return nil, fmt.Errorf("error reading YAML file: %v", err)
-	}
-
-	return yamlFile, nil
 }

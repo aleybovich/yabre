@@ -63,7 +63,7 @@ terminate: true
 `
 	var decision Decision
 	err := yaml.Unmarshal([]byte(yamlData), &decision)
-	
+
 	if err == nil {
 		t.Fatal("Expected error when both next and terminate are set")
 	}
@@ -80,7 +80,7 @@ next: "nextCondition"
 `
 	var decision Decision
 	err := yaml.Unmarshal([]byte(yamlData), &decision)
-	
+
 	if err == nil {
 		t.Fatal("Expected error for invalid YAML")
 	}
@@ -89,27 +89,27 @@ next: "nextCondition"
 func TestRunCondition_CheckFunctionNotFound(t *testing.T) {
 	vm := goja.New()
 	runner := &RulesRunner[any]{
-		functionNames: make(map[string]string),
-		decisionCallback: func(format string, args ...interface{}) {},
+		decisionCallback: func(format string, args ...any) {},
 	}
-	
+
 	rules := &Rules{
 		Conditions: map[string]Condition{
 			"test": {
 				Name:        "test",
 				Description: "Test condition",
-				Check:       "testCheck()",
+				Check:       "function() { return true; }",
 			},
 		},
 	}
-	
+
 	condition := rules.Conditions["test"]
+	// Don't inject the function — it should fail to find it
 	err := runner.runCondition(vm, rules, &condition)
-	
+
 	if err == nil {
 		t.Fatal("Expected error for missing check function")
 	}
-	if err.Error() != "check function not found: test" {
+	if err.Error() != "check function not found: "+conditionCheckFuncName("test") {
 		t.Errorf("Expected specific error message, got: %v", err)
 	}
 }
@@ -117,29 +117,27 @@ func TestRunCondition_CheckFunctionNotFound(t *testing.T) {
 func TestRunCondition_CheckFunctionExecutionError(t *testing.T) {
 	vm := goja.New()
 	runner := &RulesRunner[any]{
-		functionNames: make(map[string]string),
-		decisionCallback: func(format string, args ...interface{}) {},
+		decisionCallback: func(format string, args ...any) {},
 	}
-	
-	// Add a function that throws an error
-	vm.Set("testCheck", func() error {
+
+	// Register a function under the condition name that throws
+	vm.Set(conditionCheckFuncName("test"), func() error {
 		return errors.New("check error")
 	})
-	runner.functionNames["test"] = "testCheck"
-	
+
 	rules := &Rules{
 		Conditions: map[string]Condition{
 			"test": {
 				Name:        "test",
 				Description: "Test condition",
-				Check:       "testCheck()",
+				Check:       "function() { throw 'check error'; }",
 			},
 		},
 	}
-	
+
 	condition := rules.Conditions["test"]
 	err := runner.runCondition(vm, rules, &condition)
-	
+
 	if err == nil {
 		t.Fatal("Expected error from check function")
 	}
@@ -151,37 +149,34 @@ func TestRunCondition_CheckFunctionExecutionError(t *testing.T) {
 func TestRunCondition_TrueBranchExecution(t *testing.T) {
 	vm := goja.New()
 	actionExecuted := false
-	
+
 	runner := &RulesRunner[any]{
-		functionNames: make(map[string]string),
-		decisionCallback: func(format string, args ...interface{}) {},
+		decisionCallback: func(format string, args ...any) {},
 	}
-	
-	// Add functions
-	vm.Set("testCheck", func() bool { return true })
-	vm.Set("trueAction", func() { actionExecuted = true })
-	runner.functionNames["test"] = "testCheck"
-	runner.functionNames["test_true"] = "trueAction"
-	
+
+	// Register functions under the deterministic names
+	vm.Set(conditionCheckFuncName("test"), func() bool { return true })
+	vm.Set(decisionActionFuncName("test", true), func() { actionExecuted = true })
+
 	rules := &Rules{
 		Conditions: map[string]Condition{
 			"test": {
 				Name:        "test",
 				Description: "Test condition",
-				Check:       "testCheck()",
+				Check:       "function() { return true; }",
 				True: &Decision{
 					Name:        "test_true",
 					Description: "True action",
-					Action:      "trueAction()",
+					Action:      "function() { }",
 					Terminate:   true,
 				},
 			},
 		},
 	}
-	
+
 	condition := rules.Conditions["test"]
 	err := runner.runCondition(vm, rules, &condition)
-	
+
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
 	}
@@ -193,37 +188,34 @@ func TestRunCondition_TrueBranchExecution(t *testing.T) {
 func TestRunCondition_FalseBranchExecution(t *testing.T) {
 	vm := goja.New()
 	actionExecuted := false
-	
+
 	runner := &RulesRunner[any]{
-		functionNames: make(map[string]string),
-		decisionCallback: func(format string, args ...interface{}) {},
+		decisionCallback: func(format string, args ...any) {},
 	}
-	
-	// Add functions
-	vm.Set("testCheck", func() bool { return false })
-	vm.Set("falseAction", func() { actionExecuted = true })
-	runner.functionNames["test"] = "testCheck"
-	runner.functionNames["test_false"] = "falseAction"
-	
+
+	// Register functions under the deterministic names
+	vm.Set(conditionCheckFuncName("test"), func() bool { return false })
+	vm.Set(decisionActionFuncName("test", false), func() { actionExecuted = true })
+
 	rules := &Rules{
 		Conditions: map[string]Condition{
 			"test": {
 				Name:        "test",
 				Description: "Test condition",
-				Check:       "testCheck()",
+				Check:       "function() { return false; }",
 				False: &Decision{
 					Name:        "test_false",
 					Description: "False action",
-					Action:      "falseAction()",
+					Action:      "function() { }",
 					Terminate:   true,
 				},
 			},
 		},
 	}
-	
+
 	condition := rules.Conditions["test"]
 	err := runner.runCondition(vm, rules, &condition)
-	
+
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
 	}
@@ -235,28 +227,26 @@ func TestRunCondition_FalseBranchExecution(t *testing.T) {
 func TestRunCondition_NullDecisionHandling(t *testing.T) {
 	vm := goja.New()
 	runner := &RulesRunner[any]{
-		functionNames: make(map[string]string),
-		decisionCallback: func(format string, args ...interface{}) {},
+		decisionCallback: func(format string, args ...any) {},
 	}
-	
-	// Add function
-	vm.Set("testCheck", func() bool { return true })
-	runner.functionNames["test"] = "testCheck"
-	
+
+	// Register function under condition name
+	vm.Set(conditionCheckFuncName("test"), func() bool { return true })
+
 	rules := &Rules{
 		Conditions: map[string]Condition{
 			"test": {
 				Name:        "test",
 				Description: "Test condition",
-				Check:       "testCheck()",
+				Check:       "function() { return true; }",
 				// No True or False decision
 			},
 		},
 	}
-	
+
 	condition := rules.Conditions["test"]
 	err := runner.runCondition(vm, rules, &condition)
-	
+
 	if err != nil {
 		t.Fatalf("Expected no error for null decision, got: %v", err)
 	}
@@ -265,22 +255,21 @@ func TestRunCondition_NullDecisionHandling(t *testing.T) {
 func TestRunAction_ActionFunctionNotFound(t *testing.T) {
 	vm := goja.New()
 	runner := &RulesRunner[any]{
-		functionNames: make(map[string]string),
-		decisionCallback: func(format string, args ...interface{}) {},
+		decisionCallback: func(format string, args ...any) {},
 	}
-	
+
 	rules := &Rules{}
 	decision := &Decision{
-		Name:   "testAction",
-		Action: "nonExistentAction()",
+		Name:   "test_true",
+		Action: "function() { }",
 	}
-	
+
 	err := runner.runAction(vm, rules, decision)
-	
+
 	if err == nil {
 		t.Fatal("Expected error for missing action function")
 	}
-	if err.Error() != "action function not found: testAction" {
+	if err.Error() != "action function not found: test_true" {
 		t.Errorf("Expected specific error message, got: %v", err)
 	}
 }
@@ -288,24 +277,22 @@ func TestRunAction_ActionFunctionNotFound(t *testing.T) {
 func TestRunAction_ActionFunctionExecutionError(t *testing.T) {
 	vm := goja.New()
 	runner := &RulesRunner[any]{
-		functionNames: make(map[string]string),
-		decisionCallback: func(format string, args ...interface{}) {},
+		decisionCallback: func(format string, args ...any) {},
 	}
-	
-	// Add a function that throws an error
-	vm.Set("errorAction", func() error {
+
+	// Register a function that throws under the decision name
+	vm.Set("test_true", func() error {
 		return errors.New("action error")
 	})
-	runner.functionNames["testAction"] = "errorAction"
-	
+
 	rules := &Rules{}
 	decision := &Decision{
-		Name:   "testAction",
-		Action: "errorAction()",
+		Name:   "test_true",
+		Action: "function() { throw 'action error'; }",
 	}
-	
+
 	err := runner.runAction(vm, rules, decision)
-	
+
 	if err == nil {
 		t.Fatal("Expected error from action function")
 	}
@@ -317,20 +304,19 @@ func TestRunAction_ActionFunctionExecutionError(t *testing.T) {
 func TestRunAction_NextConditionNotFound(t *testing.T) {
 	vm := goja.New()
 	runner := &RulesRunner[any]{
-		functionNames: make(map[string]string),
-		decisionCallback: func(format string, args ...interface{}) {},
+		decisionCallback: func(format string, args ...any) {},
 	}
-	
+
 	rules := &Rules{
 		Conditions: make(map[string]Condition),
 	}
 	decision := &Decision{
-		Name: "testAction",
+		Name: "test_true",
 		Next: "nonExistentCondition",
 	}
-	
+
 	err := runner.runAction(vm, rules, decision)
-	
+
 	if err == nil {
 		t.Fatal("Expected error for missing next condition")
 	}
@@ -342,24 +328,23 @@ func TestRunAction_NextConditionNotFound(t *testing.T) {
 func TestRunAction_TerminateFlagBehavior(t *testing.T) {
 	vm := goja.New()
 	terminated := false
-	
+
 	runner := &RulesRunner[any]{
-		functionNames: make(map[string]string),
-		decisionCallback: func(format string, args ...interface{}) {
+		decisionCallback: func(format string, args ...any) {
 			if format == "Terminating" {
 				terminated = true
 			}
 		},
 	}
-	
+
 	rules := &Rules{}
 	decision := &Decision{
-		Name:      "testAction",
+		Name:      "test_true",
 		Terminate: true,
 	}
-	
+
 	err := runner.runAction(vm, rules, decision)
-	
+
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
 	}
@@ -377,9 +362,9 @@ func TestFindConditionByName_ExistingCondition(t *testing.T) {
 			},
 		},
 	}
-	
+
 	condition, err := findConditionByName(rules, "test")
-	
+
 	if err != nil {
 		t.Fatalf("Expected no error, got: %v", err)
 	}
@@ -395,9 +380,9 @@ func TestFindConditionByName_ConditionNotFound(t *testing.T) {
 	rules := &Rules{
 		Conditions: make(map[string]Condition),
 	}
-	
+
 	condition, err := findConditionByName(rules, "nonExistent")
-	
+
 	if err == nil {
 		t.Fatal("Expected error for non-existent condition")
 	}

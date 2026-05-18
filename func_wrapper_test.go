@@ -10,7 +10,7 @@ import (
 
 func TestGoFuncWrapper(t *testing.T) {
 	t.Run("One argument function with error", func(t *testing.T) {
-		f := func(a int) (interface{}, error) {
+		f := func(a int) (any, error) {
 			return fmt.Sprintf("Got %d", a), nil
 		}
 		wrapped := goFuncWrapper(f)
@@ -20,7 +20,7 @@ func TestGoFuncWrapper(t *testing.T) {
 	})
 
 	t.Run("One argument function without error", func(t *testing.T) {
-		f := func(a int) interface{} {
+		f := func(a int) any {
 			return fmt.Sprintf("Got %d", a)
 		}
 		wrapped := goFuncWrapper(f)
@@ -30,7 +30,7 @@ func TestGoFuncWrapper(t *testing.T) {
 	})
 
 	t.Run("Three argument function", func(t *testing.T) {
-		f := func(a string, b int, c float64) interface{} {
+		f := func(a string, b int, c float64) any {
 			return fmt.Sprintf("Got %s, %d, %.2f", a, b, c)
 		}
 		wrapped := goFuncWrapper(f)
@@ -40,7 +40,7 @@ func TestGoFuncWrapper(t *testing.T) {
 	})
 
 	t.Run("Function returning error", func(t *testing.T) {
-		f := func(a int) (interface{}, error) {
+		f := func(a int) (any, error) {
 			if a < 0 {
 				return nil, errors.New("negative number")
 			}
@@ -52,7 +52,7 @@ func TestGoFuncWrapper(t *testing.T) {
 	})
 
 	t.Run("Incorrect number of arguments", func(t *testing.T) {
-		f := func(a int, b string) interface{} {
+		f := func(a int, b string) any {
 			return 0
 		}
 		wrapped := goFuncWrapper(f)
@@ -61,7 +61,7 @@ func TestGoFuncWrapper(t *testing.T) {
 	})
 
 	t.Run("Incorrect argument type", func(t *testing.T) {
-		f := func(a int) interface{} {
+		f := func(a int) any {
 			return ""
 		}
 		wrapped := goFuncWrapper(f)
@@ -95,13 +95,13 @@ func TestGoFuncWrapper(t *testing.T) {
 	})
 
 	t.Run("Inserting into map", func(t *testing.T) {
-		goFunctions := make(map[string]func(...interface{}) (interface{}, error))
+		goFunctions := make(map[string]func(...any) (any, error))
 
-		f1 := func(a, b int) interface{} {
+		f1 := func(a, b int) any {
 			return a + b
 		}
 
-		f2 := func(a, b int) (interface{}, error) {
+		f2 := func(a, b int) (any, error) {
 			if a < 0 || b < 0 {
 				return nil, errors.New("negative numbers not allowed")
 			}
@@ -124,7 +124,7 @@ func TestGoFuncWrapper(t *testing.T) {
 	})
 
 	t.Run("Variadic function with empty arguments", func(t *testing.T) {
-		f := func(prefix string, args ...int) interface{} {
+		f := func(prefix string, args ...int) any {
 			return fmt.Sprintf("%s: %v", prefix, args)
 		}
 		wrapped := goFuncWrapper(f)
@@ -134,7 +134,7 @@ func TestGoFuncWrapper(t *testing.T) {
 	})
 
 	t.Run("Variadic function with multiple arguments", func(t *testing.T) {
-		f := func(prefix string, args ...int) interface{} {
+		f := func(prefix string, args ...int) any {
 			sum := 0
 			for _, v := range args {
 				sum += v
@@ -166,7 +166,7 @@ func TestGoFuncWrapper(t *testing.T) {
 	})
 
 	t.Run("Nil argument handling", func(t *testing.T) {
-		f := func(a interface{}) interface{} {
+		f := func(a any) any {
 			if a == nil {
 				return "got nil"
 			}
@@ -179,7 +179,7 @@ func TestGoFuncWrapper(t *testing.T) {
 	})
 
 	t.Run("Panic recovery", func(t *testing.T) {
-		f := func(a int) interface{} {
+		f := func(a int) any {
 			if a == 0 {
 				panic("division by zero")
 			}
@@ -198,8 +198,8 @@ func TestGoFuncWrapper(t *testing.T) {
 			Name  string
 			Value int
 		}
-		f1 := func(data interface{}) interface{} {
-			if s, ok := data.(map[string]interface{}); ok {
+		f1 := func(data any) any {
+			if s, ok := data.(map[string]any); ok {
 				return TestStruct{
 					Name:  s["name"].(string),
 					Value: int(s["value"].(float64)),
@@ -208,15 +208,15 @@ func TestGoFuncWrapper(t *testing.T) {
 			return nil
 		}
 		wrapped1 := goFuncWrapper(f1)
-		input := map[string]interface{}{"name": "test", "value": float64(42)}
+		input := map[string]any{"name": "test", "value": float64(42)}
 		result1, err := wrapped1(input)
 		assert.NoError(t, err)
 		expected := TestStruct{Name: "test", Value: 42}
 		assert.Equal(t, expected, result1)
 
 		// Slice conversion
-		f2 := func(data interface{}) interface{} {
-			if slice, ok := data.([]interface{}); ok {
+		f2 := func(data any) any {
+			if slice, ok := data.([]any); ok {
 				result := make([]int, len(slice))
 				for i, v := range slice {
 					result[i] = int(v.(float64))
@@ -226,13 +226,13 @@ func TestGoFuncWrapper(t *testing.T) {
 			return nil
 		}
 		wrapped2 := goFuncWrapper(f2)
-		result2, err := wrapped2([]interface{}{float64(1), float64(2), float64(3)})
+		result2, err := wrapped2([]any{float64(1), float64(2), float64(3)})
 		assert.NoError(t, err)
 		assert.Equal(t, []int{1, 2, 3}, result2)
 
 		// Map conversion
-		f3 := func(data interface{}) interface{} {
-			if m, ok := data.(map[string]interface{}); ok {
+		f3 := func(data any) any {
+			if m, ok := data.(map[string]any); ok {
 				result := make(map[string]string)
 				for k, v := range m {
 					result[k] = fmt.Sprintf("%v", v)
@@ -242,7 +242,7 @@ func TestGoFuncWrapper(t *testing.T) {
 			return nil
 		}
 		wrapped3 := goFuncWrapper(f3)
-		result3, err := wrapped3(map[string]interface{}{"a": 1, "b": "hello"})
+		result3, err := wrapped3(map[string]any{"a": 1, "b": "hello"})
 		assert.NoError(t, err)
 		expected3 := map[string]string{"a": "1", "b": "hello"}
 		assert.Equal(t, expected3, result3)

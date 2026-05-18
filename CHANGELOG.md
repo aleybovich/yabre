@@ -1,3 +1,10 @@
+Changelog
+
+[0.9.0]
+- Added: library validation on load - detects circular dependencies, dangling `next` references, and unreachable conditions
+- Added: Rule set caching in `RulesLibrary` — all YAML files are parsed once at init, no filesystem access after library construction
+- Removed: `NewRulesRunnerFromYaml` (deprecated since v0.7.0)
+
 [0.8.1]
 - Fixed: `goFuncWrapper` now properly handles nil arguments without panic
 - Fixed: `goFuncWrapper` now recovers from panics and converts them to errors

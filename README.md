@@ -81,13 +81,6 @@ Note: context is `interface{}` so it can be any type of variable. A `Struct` typ
    ```go
    context := MyContext{Weight: 450}
    
-   // Option 1: Using a single YAML file (deprecated but still supported)
-   runner, err := yabre.NewRulesRunnerFromYaml(yamlData, &context)
-   if err != nil {
-       // Handle the error
-   }
-   
-   // Option 2: Using a rules library (recommended)
    library, err := yabre.NewRulesLibrary(yabre.RulesLibrarySettings{
        BasePath: "./rules", // Directory containing rule files
    })
@@ -202,6 +195,42 @@ This allows you to organize your rules logically, such as:
 - Common utility functions in a shared rule set
 - Domain-specific rules in specialized rule sets
 - Main orchestration logic in a top-level rule set
+
+## Rules Validation
+
+The engine provides static validation to catch issues in rule sets at initialization time, before any rules are executed.
+
+### Enabling Validation
+
+Set `ValidateOnLoad: true` in your library settings to validate all rule sets during initialization:
+
+```go
+library, valResult, err := yabre.NewRulesLibrary(yabre.RulesLibrarySettings{
+    BasePath:       "./rules",
+})
+if err != nil {
+    // Fatal validation errors (e.g., circular dependencies) cause init to fail
+    log.Fatalf("error while loading the rules: %v", err)
+}
+
+if len(valResult) != nil {
+    log.Fatalf("rules validation failed")
+}
+
+// Non-fatal warnings (e.g., unreachable conditions) are available for inspection
+for _, warning := range library.Warnings {
+    log.Printf("rule warning: %s", warning)
+}
+```
+
+### What Gets Validated
+
+| Check | Severity | Behavior |
+|-------|----------|----------|
+| Circular condition dependencies (A → B → A) | Error | Library init fails |
+| Circular `require` dependencies between rule sets | Error | Library init fails |
+| Dangling `next` references to non-existent conditions | Error | Library init fails |
+| Unreachable conditions (not referenced and not default) | Warning | Collected in `library.Warnings` |
 
 ## Building the YAML Rules File
 

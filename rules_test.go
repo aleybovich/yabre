@@ -113,58 +113,17 @@ conditions:
 	}
 }
 
-func TestLoadRulesFromYaml_InvalidYAMLError(t *testing.T) {
-	runner := &RulesRunner[any]{}
-	
-	invalidYAML := []byte(`
-name: "invalid
-conditions:
-  condition1:
-    description: "Missing quote
-`)
-	
-	rules, err := runner.loadRulesFromYaml(invalidYAML)
-	
-	if err == nil {
-		t.Fatal("Expected error for invalid YAML")
-	}
-	if rules != nil {
-		t.Error("Expected nil rules for invalid YAML")
-	}
-	if !strings.Contains(err.Error(), "error parsing YAML") {
-		t.Errorf("Expected YAML parsing error, got: %v", err)
-	}
-}
-
-func TestLoadRulesFromYaml_EmptyYAML(t *testing.T) {
-	runner := &RulesRunner[any]{}
-	
-	emptyYAML := []byte("")
-	
-	rules, err := runner.loadRulesFromYaml(emptyYAML)
-	
-	if err != nil {
-		t.Fatalf("Unexpected error for empty YAML: %v", err)
-	}
-	if rules == nil {
-		t.Fatal("Expected non-nil rules for empty YAML")
-	}
-	if len(rules.Conditions) != 0 {
-		t.Errorf("Expected no conditions, got: %d", len(rules.Conditions))
-	}
-}
 
 func TestAddJsFunctions_ScriptInjectionErrors(t *testing.T) {
 	vm := goja.New()
 	runner := &RulesRunner[any]{
-		functionNames: make(map[string]string),
 		Rules: &Rules{
 			Scripts: "invalid javascript {{{",
 		},
 	}
-	
+
 	err := runner.addJsFunctions(vm)
-	
+
 	if err == nil {
 		t.Fatal("Expected error for invalid JavaScript")
 	}
@@ -176,19 +135,18 @@ func TestAddJsFunctions_ScriptInjectionErrors(t *testing.T) {
 func TestAddJsFunctions_InvalidJavaScriptSyntax(t *testing.T) {
 	vm := goja.New()
 	runner := &RulesRunner[any]{
-		functionNames: make(map[string]string),
 		Rules: &Rules{
 			Conditions: map[string]Condition{
 				"test": {
 					Name:  "test",
-					Check: "function check() { return",  // Invalid JS
+					Check: "function check() { return", // Invalid JS
 				},
 			},
 		},
 	}
-	
+
 	err := runner.addJsFunctions(vm)
-	
+
 	if err == nil {
 		t.Fatal("Expected error for invalid JavaScript function")
 	}
@@ -200,7 +158,6 @@ func TestAddJsFunctions_InvalidJavaScriptSyntax(t *testing.T) {
 func TestAddJsFunctions_MissingCheckFunctions(t *testing.T) {
 	vm := goja.New()
 	runner := &RulesRunner[any]{
-		functionNames: make(map[string]string),
 		Rules: &Rules{
 			Conditions: map[string]Condition{
 				"test": {
@@ -214,130 +171,109 @@ func TestAddJsFunctions_MissingCheckFunctions(t *testing.T) {
 			},
 		},
 	}
-	
+
 	err := runner.addJsFunctions(vm)
-	
+
 	// Should not error on missing check, only when trying to inject non-empty functions
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
 	}
-	
-	// Verify no function was registered for empty check
-	if _, exists := runner.functionNames["test"]; exists {
-		t.Error("Expected no function name mapping for empty check")
+
+	// Verify check function was NOT injected (empty check)
+	checkVal := vm.Get(conditionCheckFuncName("test"))
+	if checkVal != nil && checkVal != goja.Undefined() {
+		t.Error("Expected no function registered for empty check")
 	}
 }
 
-func TestInjectJSFunction_VariousFunctionNamePatterns(t *testing.T) {
-	tests := []struct {
-		name         string
-		funcCode     string
-		defaultName  string
-		expectedName string
-	}{
-		{
-			name:         "Named function",
-			funcCode:     "function myFunc() { return true; }",
-			defaultName:  "default",
-			expectedName: "myFunc",
-		},
-		{
-			name:         "Named function with spaces",
-			funcCode:     "function    spacedFunc   () { return true; }",
-			defaultName:  "default",
-			expectedName: "spacedFunc",
-		},
-		{
-			name:         "Function with parameters",
-			funcCode:     "function withParams(a, b) { return a + b; }",
-			defaultName:  "default",
-			expectedName: "withParams",
-		},
-		{
-			name:         "No function keyword",
-			funcCode:     "() => { return true; }",
-			defaultName:  "arrowDefault",
-			expectedName: "arrowDefault",
-		},
-	}
-	
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			vm := goja.New()
-			runner := &RulesRunner[any]{
-				functionNames: make(map[string]string),
-			}
-			
-			err := runner.injectJSFunction(vm, tt.defaultName, tt.funcCode)
-			
-			if err != nil {
-				t.Fatalf("Unexpected error: %v", err)
-			}
-			
-			if runner.functionNames[tt.defaultName] != tt.expectedName {
-				t.Errorf("Expected function name '%s', got: '%s'", tt.expectedName, runner.functionNames[tt.defaultName])
-			}
-			
-			// Verify function exists in VM
-			funcVal := vm.Get(tt.expectedName)
-			if funcVal == nil || funcVal == goja.Undefined() {
-				t.Errorf("Expected function '%s' to exist in VM", tt.expectedName)
-			}
-		})
-	}
-}
-
-func TestInjectJSFunction_ArrowFunctions(t *testing.T) {
+func TestInjectJSFunction_NamedFunction(t *testing.T) {
 	vm := goja.New()
-	runner := &RulesRunner[any]{
-		functionNames: make(map[string]string),
-	}
-	
-	arrowFunc := "() => true"
-	err := runner.injectJSFunction(vm, "arrowTest", arrowFunc)
-	
+
+	// Named functions get bound to our generated var name, not their internal name
+	err := injectJSFunction(vm, "my_check", "function userDefinedName() { return true; }")
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
 	}
-	
-	// Should use default name for arrow functions
-	if runner.functionNames["arrowTest"] != "arrowTest" {
-		t.Errorf("Expected default name 'arrowTest' for arrow function, got: %s", runner.functionNames["arrowTest"])
+
+	// Should be callable via our generated name
+	funcVal := vm.Get("my_check")
+	if funcVal == nil || funcVal == goja.Undefined() {
+		t.Error("Expected function 'my_check' to exist in VM")
 	}
 }
 
-func TestInjectJSFunction_AnonymousFunctions(t *testing.T) {
+func TestInjectJSFunction_ArrowFunction(t *testing.T) {
 	vm := goja.New()
-	runner := &RulesRunner[any]{
-		functionNames: make(map[string]string),
-	}
-	
-	anonFunc := "function() { return 42; }"
-	err := runner.injectJSFunction(vm, "anonTest", anonFunc)
-	
+
+	err := injectJSFunction(vm, "arrow_check", "() => true")
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
 	}
-	
-	// Should use default name for anonymous functions
-	if runner.functionNames["anonTest"] != "anonTest" {
-		t.Errorf("Expected default name 'anonTest' for anonymous function, got: %s", runner.functionNames["anonTest"])
+
+	funcVal := vm.Get("arrow_check")
+	if funcVal == nil || funcVal == goja.Undefined() {
+		t.Error("Expected function 'arrow_check' to exist in VM")
 	}
 }
 
-func TestInjectJSFunction_InvalidFunctionCode(t *testing.T) {
+func TestInjectJSFunction_AnonymousFunction(t *testing.T) {
 	vm := goja.New()
-	runner := &RulesRunner[any]{
-		functionNames: make(map[string]string),
+
+	err := injectJSFunction(vm, "anon_check", "function() { return 42; }")
+	if err != nil {
+		t.Fatalf("Unexpected error: %v", err)
 	}
-	
-	invalidCode := "function broken() { return"
-	err := runner.injectJSFunction(vm, "invalid", invalidCode)
-	
+
+	funcVal := vm.Get("anon_check")
+	if funcVal == nil || funcVal == goja.Undefined() {
+		t.Error("Expected function 'anon_check' to exist in VM")
+	}
+}
+
+func TestInjectJSFunction_InvalidCode(t *testing.T) {
+	vm := goja.New()
+
+	err := injectJSFunction(vm, "broken", "function broken() { return")
 	if err == nil {
 		t.Fatal("Expected error for invalid function code")
 	}
 	if !strings.Contains(err.Error(), "error injecting function") {
 		t.Errorf("Expected function injection error, got: %v", err)
+	}
+}
+
+func TestInjectJSFunction_DuplicateNamedFunctions(t *testing.T) {
+	// Two conditions can define functions with the same internal name
+	// because we bind them to different generated var names
+	vm := goja.New()
+
+	err := injectJSFunction(vm, "cond_a", "function isEligible() { return true; }")
+	if err != nil {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+
+	err = injectJSFunction(vm, "cond_b", "function isEligible() { return false; }")
+	if err != nil {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+
+	// Both should be independently callable
+	funcA, ok := goja.AssertFunction(vm.Get("cond_a"))
+	if !ok {
+		t.Fatal("Expected cond_a to be a function")
+	}
+	funcB, ok := goja.AssertFunction(vm.Get("cond_b"))
+	if !ok {
+		t.Fatal("Expected cond_b to be a function")
+	}
+
+	resultA, _ := funcA(goja.Undefined())
+	resultB, _ := funcB(goja.Undefined())
+
+	if !resultA.ToBoolean() {
+		t.Error("Expected cond_a to return true")
+	}
+	if resultB.ToBoolean() {
+		t.Error("Expected cond_b to return false")
 	}
 }

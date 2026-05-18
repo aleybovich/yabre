@@ -3,10 +3,9 @@ package yabre
 import (
 	"errors"
 	"fmt"
-	"regexp"
+	"maps"
 
 	"github.com/dop251/goja"
-	"gopkg.in/yaml.v2"
 )
 
 type Rules struct {
@@ -18,7 +17,7 @@ type Rules struct {
 }
 
 // Perform enrichment and validation of rules data during unmarshalling
-func (r *Rules) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (r *Rules) UnmarshalYAML(unmarshal func(any) error) error {
 	type rules Rules // we need to create an intermediate type to avoid infinite recursion
 	var rr rules
 	if err := unmarshal(&rr); err != nil {
@@ -33,12 +32,12 @@ func (r *Rules) UnmarshalYAML(unmarshal func(interface{}) error) error {
 		condition.Name = name
 
 		if condition.True != nil {
-			condition.True.Name = condition.Name + "_true"
+			condition.True.Name = decisionActionFuncName(condition.Name, true)
 			condition.True.Value = true
 		}
 
 		if condition.False != nil {
-			condition.False.Name = condition.Name + "_false"
+			condition.False.Name = decisionActionFuncName(condition.Name, false)
 			condition.False.Value = false
 		}
 
@@ -58,17 +57,19 @@ func (r *Rules) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	return nil
 }
 
-func (rr *RulesRunner[Context]) loadRulesFromYaml(yamlFile []byte) (*Rules, error) {
-	// Parse the YAML into a Rule struct
-	var rules Rules
-	err := yaml.Unmarshal(yamlFile, &rules)
-	if err != nil {
-		return nil, fmt.Errorf("error parsing YAML: %v", err)
+// copy returns a shallow copy of the Rules struct with a new Conditions map.
+// This allows merging without mutating cached rule sets.
+func (r *Rules) copy() *Rules {
+	conditions := make(map[string]Condition, len(r.Conditions))
+	maps.Copy(conditions, r.Conditions)
+
+	return &Rules{
+		Name:             r.Name,
+		Require:          r.Require,
+		Scripts:          r.Scripts,
+		Conditions:       conditions,
+		DefaultCondition: r.DefaultCondition,
 	}
-
-	// Now unmarshal the same yaml into an ordered list to get the first condition
-
-	return &rules, nil
 }
 
 func (runner *RulesRunner[Context]) addJsFunctions(vm *goja.Runtime) error {
@@ -82,20 +83,17 @@ func (runner *RulesRunner[Context]) addJsFunctions(vm *goja.Runtime) error {
 
 	for _, condition := range runner.Rules.Conditions {
 		if condition.Check != "" {
-			checkName := condition.Name
-			if err := runner.injectJSFunction(vm, checkName, condition.Check); err != nil {
+			if err := injectJSFunction(vm, conditionCheckFuncName(condition.Name), condition.Check); err != nil {
 				return fmt.Errorf("error injecting condition function into vm: %w", err)
 			}
 		}
 		if condition.True != nil && condition.True.Action != "" {
-			actionName := fmt.Sprintf("%s_%t", condition.Name, condition.True.Value)
-			if err := runner.injectJSFunction(vm, actionName, condition.True.Action); err != nil {
+			if err := injectJSFunction(vm, condition.True.Name, condition.True.Action); err != nil {
 				return fmt.Errorf("error injecting action function into vm: %w", err)
 			}
 		}
 		if condition.False != nil && condition.False.Action != "" {
-			actionName := fmt.Sprintf("%s_%t", condition.Name, condition.False.Value)
-			if err := runner.injectJSFunction(vm, actionName, condition.False.Action); err != nil {
+			if err := injectJSFunction(vm, condition.False.Name, condition.False.Action); err != nil {
 				return fmt.Errorf("error injecting action function into vm: %w", err)
 			}
 		}
@@ -104,21 +102,10 @@ func (runner *RulesRunner[Context]) addJsFunctions(vm *goja.Runtime) error {
 	return nil
 }
 
-var funcNameRegex = regexp.MustCompile(`function\s+(\w+)\s*\(`)
-
-func (runner *RulesRunner[Context]) injectJSFunction(vm *goja.Runtime, defaultName, funcCode string) error {
-	funcName := defaultName
-
-	matches := funcNameRegex.FindStringSubmatch(funcCode)
-	if len(matches) > 1 {
-		funcName = matches[1]
-	}
-
-	runner.functionNames[defaultName] = funcName // Store the function name mapping
-	_, err := vm.RunString(fmt.Sprintf("%s = %s", funcName, funcCode))
+func injectJSFunction(vm *goja.Runtime, varName, funcCode string) error {
+	_, err := vm.RunString(fmt.Sprintf("var %s = %s", varName, funcCode))
 	if err != nil {
-		return fmt.Errorf("error injecting function %s into vm: %w", funcName, err)
+		return fmt.Errorf("error injecting function %s into vm: %w", varName, err)
 	}
-
 	return nil
 }

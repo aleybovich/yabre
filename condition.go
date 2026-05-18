@@ -25,7 +25,20 @@ type Decision struct {
 	Value       bool   `yaml:"-"`
 }
 
-func (cr *Decision) UnmarshalYAML(unmarshal func(interface{}) error) error {
+// conditionCheckFuncName generates the deterministic JS variable name for a condition's check function.
+func conditionCheckFuncName(conditionName string) string {
+	return conditionName + "_check"
+}
+
+// decisionActionFuncName generates the deterministic JS variable name for a decision's action function.
+func decisionActionFuncName(conditionName string, branch bool) string {
+	if branch {
+		return conditionName + "_true"
+	}
+	return conditionName + "_false"
+}
+
+func (cr *Decision) UnmarshalYAML(unmarshal func(any) error) error {
 	type decision Decision // we need to create an intermediate type to avoid infinite recursion
 	var dsn decision
 	if err := unmarshal(&dsn); err != nil {
@@ -44,17 +57,15 @@ func (cr *Decision) UnmarshalYAML(unmarshal func(interface{}) error) error {
 func (runner *RulesRunner[Context]) runCondition(vm *goja.Runtime, rules *Rules, condition *Condition) error {
 	runner.decisionCallback("Evaluating condition: [%s] %s", condition.Name, condition.Description)
 
-	// Get the custom function name for the check function
-	checkFuncName := runner.getFunctionName(condition.Name)
-
 	// Evaluate the check function
-	checkFunc, ok := goja.AssertFunction(vm.Get(checkFuncName))
+	funcName := conditionCheckFuncName(condition.Name)
+	checkFunc, ok := goja.AssertFunction(vm.Get(funcName))
 	if !ok {
-		return fmt.Errorf("check function not found: %s", checkFuncName)
+		return fmt.Errorf("check function not found: %s", funcName)
 	}
 	checkResult, err := checkFunc(goja.Undefined())
 	if err != nil {
-		return fmt.Errorf("error evaluating check function %s: %w", checkFuncName, err)
+		return fmt.Errorf("error evaluating check function %s: %w", funcName, err)
 	}
 
 	if checkResult.ToBoolean() {
@@ -77,11 +88,10 @@ func (runner *RulesRunner[Context]) runCondition(vm *goja.Runtime, rules *Rules,
 // Helper function to run the action
 func (runner *RulesRunner[Context]) runAction(vm *goja.Runtime, rules *Rules, result *Decision) error {
 	if result.Action != "" {
-		actionFuncName := runner.getFunctionName(result.Name)
-		runner.decisionCallback("Running action: [%s] %s", actionFuncName, result.Description)
-		actionFunc, ok := goja.AssertFunction(vm.Get(actionFuncName))
+		runner.decisionCallback("Running action: [%s] %s", result.Name, result.Description)
+		actionFunc, ok := goja.AssertFunction(vm.Get(result.Name))
 		if !ok {
-			return fmt.Errorf("action function not found: %s", actionFuncName)
+			return fmt.Errorf("action function not found: %s", result.Name)
 		}
 		_, err := actionFunc(goja.Undefined())
 		if err != nil {

@@ -21,11 +21,12 @@ func TestMermaid(t *testing.T) {
 
 func TestExportMermaidFromLibrary(t *testing.T) {
 	// Create a rules library from test data
-	rl, err := NewRulesLibrary(RulesLibrarySettings{
+	rl, valResult, err := NewRulesLibrary(RulesLibrarySettings{
 		BasePath:   "test/bre",
 		FileSystem: testFs,
 	})
 	assert.NoError(t, err)
+	assertBREValidationWarnings(t, valResult)
 
 	// Generate Mermaid diagram from the "main" ruleset
 	mermaidCode, err := ExportMermaidFromLibrary(rl, "main", "check_for_ruleset1")

@@ -15,6 +15,8 @@ type RulesLibrary struct {
 	rulePaths map[string]string
 	// maps rule name to its dependencies
 	dependencies map[string][]string
+	// cached parsed rule sets (loaded once at init, no further FS access)
+	rules map[string]*Rules
 	// File system for os or embedded file systems
 	fileSystem fs.FS
 	// base path for all rules/libraries
@@ -29,7 +31,7 @@ type RulesLibrarySettings struct {
 	FileSystem fs.FS
 }
 
-func NewRulesLibrary(s RulesLibrarySettings) (*RulesLibrary, error) {
+func NewRulesLibrary(s RulesLibrarySettings) (*RulesLibrary, ValidationResult, error) {
 	if s.BasePath == "" {
 		s.BasePath = "."
 	}
@@ -37,6 +39,7 @@ func NewRulesLibrary(s RulesLibrarySettings) (*RulesLibrary, error) {
 	rl := &RulesLibrary{
 		rulePaths:    make(map[string]string),
 		dependencies: make(map[string][]string),
+		rules:        make(map[string]*Rules),
 		fileSystem:   s.FileSystem,
 		basePath:     s.BasePath,
 	}
@@ -52,49 +55,49 @@ func NewRulesLibrary(s RulesLibrarySettings) (*RulesLibrary, error) {
 
 	// Scan all yaml files and map dependencies
 	if err := rl.scanFiles(); err != nil {
-		return nil, fmt.Errorf("failed to scan files: %w", err)
+		return nil, ValidationResult{}, fmt.Errorf("failed to scan files: %w", err)
 	}
 
-	return rl, nil
+	// validateAll enables validation of all rule sets during library initialization.
+	// Circular dependencies are fatal (library init fails). Other issues (e.g., unreachable
+	// conditions, dangling references) are collected in the library's Warnings field.
+	result := rl.validateAll()
+
+	return rl, result, nil
 }
 
-// GetRuleNamesAndPaths retrieves rule names and their associated paths for visualization purposes.
+// GetRuleNamesAndPaths retrieves rule names and their associated file paths.
+// Useful for clients that need to reference the underlying YAML files,
+// e.g. for visualization, editor integration, or tooling that operates on the source files.
 func (rl *RulesLibrary) GetRuleNamesAndPaths() map[string]string {
 	return rl.rulePaths
 }
 
 func (rl *RulesLibrary) LoadRules(name string) (*Rules, error) {
+	cached, exists := rl.rules[name]
+	if !exists {
+		return nil, fmt.Errorf("rule set %s not found", name)
+	}
+
 	// Get ordered list of dependencies
 	deps, err := rl.resolveDependencies(name)
 	if err != nil {
 		return nil, fmt.Errorf("failed to resolve dependencies: %w", err)
 	}
 
-	// Start with empty Rules to merge into
-	merged := &Rules{
-		Conditions: make(map[string]Condition),
-	}
+	// Start with a copy of the main rule set (avoid mutating the cache)
+	main := cached.copy()
 
-	// Load and merge all dependencies first
+	// Merge all dependencies into the main rule set
 	for _, depName := range deps {
-		dep, err := rl.loadFile(rl.rulePaths[depName])
-		if err != nil {
-			return nil, fmt.Errorf("failed to load dependency %s: %w", depName, err)
+		dep, exists := rl.rules[depName]
+		if !exists {
+			return nil, fmt.Errorf("dependency %s not found", depName)
 		}
 
-		if err := rl.mergeRules(merged, dep); err != nil {
+		if err := mergeRules(main, dep); err != nil {
 			return nil, fmt.Errorf("failed to merge dependency %s: %w", depName, err)
 		}
-	}
-
-	// Finally load and merge the requested rule set
-	main, err := rl.loadFile(rl.rulePaths[name])
-	if err != nil {
-		return nil, fmt.Errorf("failed to load rule set %s: %w", name, err)
-	}
-
-	if err := rl.mergeRules(main, merged); err != nil {
-		return nil, fmt.Errorf("failed to merge rule set %s: %w", name, err)
 	}
 
 	return main, nil
@@ -135,7 +138,7 @@ func (rl *RulesLibrary) resolveDependencies(name string) ([]string, error) {
 	return ordered[:len(ordered)-1], nil
 }
 
-func (rl *RulesLibrary) mergeRules(target *Rules, source *Rules) error {
+func mergeRules(target *Rules, source *Rules) error {
 	// Merge scripts
 	if source.Scripts != "" {
 		if target.Scripts == "" {
@@ -156,18 +159,43 @@ func (rl *RulesLibrary) mergeRules(target *Rules, source *Rules) error {
 	return nil
 }
 
-func (rl *RulesLibrary) loadFile(path string) (*Rules, error) {
-	data, err := fs.ReadFile(rl.fileSystem, path)
-	if err != nil {
-		return nil, err
+// validateAll runs validation on all rule sets (with merged dependencies).
+// It collects all issues across every rule set and returns them grouped into
+// errors and warnings — it never stops early on the first problem.
+func (rl *RulesLibrary) validateAll() ValidationResult {
+	var result ValidationResult
+
+	// Check library-level require cycles
+	for _, issue := range rl.ValidateLibraryDependencies() {
+		if issue.Severity == SeverityError {
+			result.Errors = append(result.Errors, issue)
+		} else {
+			result.Warnings = append(result.Warnings, issue)
+		}
 	}
 
-	var rules Rules
-	if err := yaml.Unmarshal(data, &rules); err != nil {
-		return nil, err
+	// Validate each rule set with its merged dependencies
+	for name := range rl.rules {
+		merged, err := rl.LoadRules(name)
+		if err != nil {
+			result.Errors = append(result.Errors, ValidationIssue{
+				Severity: SeverityError,
+				Message:  fmt.Sprintf("rule set %s: %s", name, err.Error()),
+			})
+			continue
+		}
+
+		for _, issue := range ValidateRules(merged) {
+			issue.ConditionName = name + "." + issue.ConditionName
+			if issue.Severity == SeverityError {
+				result.Errors = append(result.Errors, issue)
+			} else {
+				result.Warnings = append(result.Warnings, issue)
+			}
+		}
 	}
 
-	return &rules, nil
+	return result
 }
 
 func (rl *RulesLibrary) scanFiles() error {
@@ -177,7 +205,6 @@ func (rl *RulesLibrary) scanFiles() error {
 		}
 
 		if !info.IsDir() && (strings.HasSuffix(path, ".yaml") || strings.HasSuffix(path, ".yml")) {
-			// Read file to get name and dependencies
 			data, err := fs.ReadFile(rl.fileSystem, path)
 			if err != nil {
 				return fmt.Errorf("failed to read file %s: %w", path, err)
@@ -192,12 +219,13 @@ func (rl *RulesLibrary) scanFiles() error {
 				return fmt.Errorf("file %s has no name", path)
 			}
 
-			if _, exists := rl.rulePaths[rules.Name]; exists {
+			if _, exists := rl.rules[rules.Name]; exists {
 				return fmt.Errorf("duplicate rule set name %s", rules.Name)
 			}
 
 			rl.rulePaths[rules.Name] = path
 			rl.dependencies[rules.Name] = rules.Require
+			rl.rules[rules.Name] = &rules
 		}
 		return nil
 	})

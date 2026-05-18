@@ -14,7 +14,7 @@ import (
 )
 
 // Helper function to create a rules library from YAML content
-func createLibraryFromYAML(t *testing.T, yamlContent string, fileName string) *RulesLibrary {
+func createLibraryFromYAML(t *testing.T, yamlContent string, fileName string) (*RulesLibrary, ValidationResult) {
 	// Create a temporary directory structure in memory using embed.FS
 	// For testing, we'll use the actual file system
 	tempDir := t.TempDir()
@@ -22,12 +22,12 @@ func createLibraryFromYAML(t *testing.T, yamlContent string, fileName string) *R
 	err := os.WriteFile(yamlPath, []byte(yamlContent), 0644)
 	require.NoError(t, err)
 
-	library, err := NewRulesLibrary(RulesLibrarySettings{
+	library, valResult, err := NewRulesLibrary(RulesLibrarySettings{
 		BasePath: tempDir,
 	})
 	require.NoError(t, err)
 
-	return library
+	return library, valResult
 }
 
 // Test empty rules set
@@ -36,10 +36,12 @@ func TestRunner_EmptyRulesSet(t *testing.T) {
 name: "empty-rules"
 conditions: {}
 `
-	library := createLibraryFromYAML(t, yamlRules, "empty-rules.yaml")
+	library, valResult := createLibraryFromYAML(t, yamlRules, "empty-rules.yaml")
+	assert.Empty(t, valResult.Errors)
+	assert.Empty(t, valResult.Warnings)
 
-	context := map[string]interface{}{}
-	runner, err := NewRulesRunnerFromLibrary[map[string]interface{}](library, "empty-rules", &context)
+	context := map[string]any{}
+	runner, err := NewRulesRunnerFromLibrary(library, "empty-rules", &context)
 	require.NoError(t, err)
 	_, err = runner.RunRules(&context, nil)
 	assert.Error(t, err)
@@ -62,10 +64,14 @@ conditions:
     true:
       terminate: true
 `
-	library := createLibraryFromYAML(t, yamlRules, "no-default.yaml")
+	library, valResult := createLibraryFromYAML(t, yamlRules, "no-default.yaml")
+	assert.Empty(t, valResult.Errors)
+	assert.Len(t, valResult.Warnings, 2)
+	assert.Contains(t, valResult.Warnings[0].Message, "condition is unreachable")
+	assert.Contains(t, valResult.Warnings[1].Message, "condition is unreachable")
 
-	context := map[string]interface{}{}
-	runner, err := NewRulesRunnerFromLibrary[map[string]interface{}](library, "no-default", &context)
+	context := map[string]any{}
+	runner, err := NewRulesRunnerFromLibrary(library, "no-default", &context)
 	require.NoError(t, err)
 	_, err = runner.RunRules(&context, nil)
 	assert.Error(t, err)
@@ -89,30 +95,11 @@ conditions:
     true:
       next: "condition1"  # Creates a circular reference
 `
-	library := createLibraryFromYAML(t, yamlRules, "circular-refs.yaml")
-
-	// Add max iterations to prevent infinite loop
-	maxIterations := 0
-
-	context := map[string]interface{}{}
-	runner, err := NewRulesRunnerFromLibrary[map[string]interface{}](library, "circular-refs", &context,
-		WithDecisionCallback[map[string]interface{}](func(format string, args ...interface{}) {
-			maxIterations++
-			if maxIterations > 10 {
-				panic("Circular reference detected - too many iterations")
-			}
-		}),
-	)
-	require.NoError(t, err)
-
-	// This should either timeout or hit max iterations
-	defer func() {
-		if r := recover(); r != nil {
-			assert.Contains(t, r.(string), "Circular reference detected")
-		}
-	}()
-
-	_, _ = runner.RunRules(&context, nil)
+	_, valResult := createLibraryFromYAML(t, yamlRules, "circular-refs.yaml")
+	assert.Len(t, valResult.Errors, 2)
+	assert.Empty(t, valResult.Warnings)
+	assert.Contains(t, valResult.Errors[0].Message, "condition 'condition1' is reachable from itself")
+	assert.Contains(t, valResult.Errors[1].Message, "condition 'condition2' is reachable from itself")
 }
 
 // Test JavaScript runtime errors
@@ -131,10 +118,12 @@ conditions:
     true:
       terminate: true
 `
-	library := createLibraryFromYAML(t, yamlRules, "js-runtime-error.yaml")
+	library, valResult := createLibraryFromYAML(t, yamlRules, "js-runtime-error.yaml")
+	assert.Empty(t, valResult.Errors)
+	assert.Empty(t, valResult.Warnings)
 
-	context := map[string]interface{}{}
-	runner, err := NewRulesRunnerFromLibrary[map[string]interface{}](library, "js-runtime-error", &context)
+	context := map[string]any{}
+	runner, err := NewRulesRunnerFromLibrary(library, "js-runtime-error", &context)
 	require.NoError(t, err)
 	_, err = runner.RunRules(&context, nil)
 	assert.Error(t, err)
@@ -154,10 +143,13 @@ conditions:
     true:
       next: "missingCondition"  # This condition doesn't exist
 `
-	library := createLibraryFromYAML(t, yamlRules, "non-existent-next.yaml")
+	library, valResult := createLibraryFromYAML(t, yamlRules, "non-existent-next.yaml")
+	assert.Len(t, valResult.Errors, 1)
+	assert.Empty(t, valResult.Warnings)
+	assert.Contains(t, valResult.Errors[0].Message, "non-existent condition 'missingCondition'")
 
-	context := map[string]interface{}{}
-	runner, err := NewRulesRunnerFromLibrary[map[string]interface{}](library, "non-existent-next", &context)
+	context := map[string]any{}
+	runner, err := NewRulesRunnerFromLibrary(library, "non-existent-next", &context)
 	require.NoError(t, err)
 	_, err = runner.RunRules(&context, nil)
 	assert.Error(t, err)
@@ -209,9 +201,11 @@ conditions:
       action: "function() { context.level = (context.level || 0) + 1; }"
       terminate: true
 `
-	library := createLibraryFromYAML(t, yamlRules, "deeply-nested.yaml")
+	library, valResult := createLibraryFromYAML(t, yamlRules, "deeply-nested.yaml")
+	assert.Empty(t, valResult.Errors)
+	assert.Empty(t, valResult.Warnings)
 
-	context := map[string]interface{}{"level": 0}
+	context := map[string]any{"level": 0}
 	runner, err := NewRulesRunnerFromLibrary(library, "deeply-nested", &context)
 	require.NoError(t, err)
 	_, err = runner.RunRules(&context, nil)
@@ -263,16 +257,18 @@ conditions:
         }
       terminate: true
 `
-	library := createLibraryFromYAML(t, yamlRules, "context-manipulation.yaml")
+	library, valResult := createLibraryFromYAML(t, yamlRules, "context-manipulation.yaml")
+	assert.Empty(t, valResult.Errors)
+	assert.Empty(t, valResult.Warnings)
 
-	context := map[string]interface{}{}
-	runner, err := NewRulesRunnerFromLibrary[map[string]interface{}](library, "context-manipulation", &context)
+	context := map[string]any{}
+	runner, err := NewRulesRunnerFromLibrary(library, "context-manipulation", &context)
 	require.NoError(t, err)
 	_, err = runner.RunRules(&context, nil)
 	assert.NoError(t, err)
 
 	// Check complex object was set
-	nested, ok := context["nested"].(map[string]interface{})
+	nested, ok := context["nested"].(map[string]any)
 	assert.True(t, ok)
 	assert.Equal(t, int64(42), nested["number"])
 	assert.Equal(t, true, nested["boolean"])
@@ -300,15 +296,17 @@ conditions:
 	goCheckCalled := false
 	goActionCalled := false
 
-	library := createLibraryFromYAML(t, yamlRules, "mixed-functions.yaml")
+	library, valResult := createLibraryFromYAML(t, yamlRules, "mixed-functions.yaml")
+	assert.Empty(t, valResult.Errors)
+	assert.Empty(t, valResult.Warnings)
 
-	context := map[string]interface{}{"value": "test"}
-	runner, err := NewRulesRunnerFromLibrary[map[string]interface{}](library, "mixed-functions", &context,
-		WithGoFunction[map[string]interface{}]("goCheck", func(value interface{}) bool {
+	context := map[string]any{"value": "test"}
+	runner, err := NewRulesRunnerFromLibrary(library, "mixed-functions", &context,
+		WithGoFunction[map[string]any]("goCheck", func(value any) bool {
 			goCheckCalled = true
 			return value == "test"
 		}),
-		WithGoFunction[map[string]interface{}]("goAction", func(status string) interface{} {
+		WithGoFunction[map[string]any]("goAction", func(status string) any {
 			goActionCalled = true
 			assert.Equal(t, "processed", status)
 			return nil
@@ -345,10 +343,12 @@ conditions:
     true:
       terminate: true
 `
-	library := createLibraryFromYAML(t, yamlRules, "error-propagation.yaml")
+	library, valResult := createLibraryFromYAML(t, yamlRules, "error-propagation.yaml")
+	assert.Empty(t, valResult.Errors)
+	assert.Empty(t, valResult.Warnings)
 
-	context := map[string]interface{}{}
-	runner, err := NewRulesRunnerFromLibrary[map[string]interface{}](library, "error-propagation", &context)
+	context := map[string]any{}
+	runner, err := NewRulesRunnerFromLibrary(library, "error-propagation", &context)
 	require.NoError(t, err)
 	_, err = runner.RunRules(&context, nil)
 	assert.Error(t, err)
@@ -373,23 +373,26 @@ conditions:
     false:
       terminate: true
 `
-	library := createLibraryFromYAML(t, yamlRules, "concurrent-test.yaml")
+	library, valResult := createLibraryFromYAML(t, yamlRules, "concurrent-test.yaml")
+	assert.Len(t, valResult.Errors, 1)
+	assert.Empty(t, valResult.Warnings)
+	assert.Contains(t, valResult.Errors[0].Message, "circular dependency detected")
 
 	// Create a dummy context for initialization
-	dummyContext := map[string]interface{}{}
-	runner, err := NewRulesRunnerFromLibrary[map[string]interface{}](library, "concurrent-test", &dummyContext)
+	dummyContext := map[string]any{}
+	runner, err := NewRulesRunnerFromLibrary(library, "concurrent-test", &dummyContext)
 	require.NoError(t, err)
 
 	// Run multiple goroutines executing rules concurrently
 	var wg sync.WaitGroup
 	errors := make([]error, 10)
-	contexts := make([]map[string]interface{}, 10)
+	contexts := make([]map[string]any, 10)
 
 	for i := 0; i < 10; i++ {
 		wg.Add(1)
 		go func(index int) {
 			defer wg.Done()
-			ctx := map[string]interface{}{}
+			ctx := map[string]any{}
 			_, errors[index] = runner.RunRules(&ctx, nil)
 			contexts[index] = ctx
 		}(i)
@@ -434,18 +437,20 @@ conditions:
     true:
       terminate: true
 `
-	library := createLibraryFromYAML(t, yamlRules, "type-coercion.yaml")
+	library, valResult := createLibraryFromYAML(t, yamlRules, "type-coercion.yaml")
+	assert.Empty(t, valResult.Errors)
+	assert.Empty(t, valResult.Warnings)
 
-	context := map[string]interface{}{}
+	context := map[string]any{}
 	runner, err := NewRulesRunnerFromLibrary(library, "type-coercion", &context,
-		WithGoFunction[map[string]interface{}]("goProcessInt", func(n int) int {
+		WithGoFunction[map[string]any]("goProcessInt", func(n int) int {
 			return n * 2
 		}),
-		WithGoFunction[map[string]interface{}]("goProcessString", func(s string) string {
+		WithGoFunction[map[string]any]("goProcessString", func(s string) string {
 			return strings.ToUpper(s)
 		}),
-		WithGoFunction[map[string]interface{}]("goProcessArray", func(arr []interface{}) []interface{} {
-			result := make([]interface{}, len(arr))
+		WithGoFunction[map[string]any]("goProcessArray", func(arr []any) []any {
+			result := make([]any, len(arr))
 			for i, v := range arr {
 				switch num := v.(type) {
 				case float64:
@@ -458,11 +463,11 @@ conditions:
 			}
 			return result
 		}),
-		WithGoFunction[map[string]interface{}]("goProcessObject", func(obj map[string]interface{}) map[string]interface{} {
+		WithGoFunction[map[string]any]("goProcessObject", func(obj map[string]any) map[string]any {
 			obj["processed"] = true
 			return obj
 		}),
-		WithGoFunction[map[string]interface{}]("goProcessBool", func(b bool) bool {
+		WithGoFunction[map[string]any]("goProcessBool", func(b bool) bool {
 			return !b
 		}),
 	)
@@ -473,12 +478,12 @@ conditions:
 	assert.Equal(t, int64(84), context["intResult"])
 	assert.Equal(t, "HELLO", context["stringResult"])
 
-	arrayResult := context["arrayResult"].([]interface{})
+	arrayResult := context["arrayResult"].([]any)
 	assert.Equal(t, int64(2), arrayResult[0])
 	assert.Equal(t, int64(4), arrayResult[1])
 	assert.Equal(t, int64(6), arrayResult[2])
 
-	objectResult := context["objectResult"].(map[string]interface{})
+	objectResult := context["objectResult"].(map[string]any)
 	assert.Equal(t, "value", objectResult["key"])
 	assert.Equal(t, int64(123), objectResult["number"])
 	assert.Equal(t, true, objectResult["processed"])
@@ -532,16 +537,20 @@ conditions:
 	err = os.WriteFile(tempDir+"/dependent-rules.yaml", []byte(dependentRules), 0644)
 	require.NoError(t, err)
 
-	library, err := NewRulesLibrary(RulesLibrarySettings{
+	library, valResult, err := NewRulesLibrary(RulesLibrarySettings{
 		BasePath: tempDir,
 	})
 	require.NoError(t, err)
+	assert.Empty(t, valResult.Errors)
+	assert.Len(t, valResult.Warnings, 2)
+	assert.Contains(t, valResult.Warnings[0].Message, "condition is unreachable")
+	assert.Contains(t, valResult.Warnings[1].Message, "condition is unreachable")
 
-	context := map[string]interface{}{
+	context := map[string]any{
 		"baseValue":      10,
 		"dependentValue": 20,
 	}
-	runner, err := NewRulesRunnerFromLibrary[map[string]interface{}](library, "dependent-rules", &context)
+	runner, err := NewRulesRunnerFromLibrary(library, "dependent-rules", &context)
 	require.NoError(t, err)
 	_, err = runner.RunRules(&context, nil)
 	assert.NoError(t, err)
@@ -561,12 +570,14 @@ conditions:
     true:
       terminate: true
 `
-	library := createLibraryFromYAML(t, yamlRules, "go-function-error.yaml")
+	library, valResult := createLibraryFromYAML(t, yamlRules, "go-function-error.yaml")
+	assert.Empty(t, valResult.Errors)
+	assert.Empty(t, valResult.Warnings)
 
 	// Test with nil value
-	context := map[string]interface{}{"value": nil}
-	runner, err := NewRulesRunnerFromLibrary[map[string]interface{}](library, "go-function-error", &context,
-		WithGoFunction[map[string]interface{}]("goFunctionThatErrors", func(value interface{}) (bool, error) {
+	context := map[string]any{"value": nil}
+	runner, err := NewRulesRunnerFromLibrary(library, "go-function-error", &context,
+		WithGoFunction[map[string]any]("goFunctionThatErrors", func(value any) (bool, error) {
 			if value == nil {
 				return false, errors.New("value cannot be nil")
 			}
@@ -579,7 +590,7 @@ conditions:
 	assert.Contains(t, err.Error(), "value cannot be nil")
 
 	// Test with valid value
-	context2 := map[string]interface{}{"value": "something"}
+	context2 := map[string]any{"value": "something"}
 	_, err = runner.RunRules(&context2, nil)
 	assert.NoError(t, err)
 }
@@ -616,16 +627,18 @@ conditions:
       action: "function() { context.access = 'denied'; }"
       terminate: true
 `
-	library := createLibraryFromYAML(t, yamlRules, "complex-tree.yaml")
+	library, valResult := createLibraryFromYAML(t, yamlRules, "complex-tree.yaml")
+	assert.Empty(t, valResult.Errors)
+	assert.Empty(t, valResult.Warnings)
 
 	testCases := []struct {
 		name     string
-		context  map[string]interface{}
+		context  map[string]any
 		expected string
 	}{
 		{
 			name: "Adult with permission",
-			context: map[string]interface{}{
+			context: map[string]any{
 				"age":        25,
 				"permission": true,
 				"dayOfWeek":  1, // Monday
@@ -634,7 +647,7 @@ conditions:
 		},
 		{
 			name: "Adult without permission",
-			context: map[string]interface{}{
+			context: map[string]any{
 				"age":        25,
 				"permission": false,
 				"dayOfWeek":  1,
@@ -643,7 +656,7 @@ conditions:
 		},
 		{
 			name: "Minor on weekend",
-			context: map[string]interface{}{
+			context: map[string]any{
 				"age":        16,
 				"permission": false,
 				"dayOfWeek":  6, // Saturday
@@ -652,7 +665,7 @@ conditions:
 		},
 		{
 			name: "Minor on weekday",
-			context: map[string]interface{}{
+			context: map[string]any{
 				"age":        16,
 				"permission": false,
 				"dayOfWeek":  2, // Tuesday
@@ -663,7 +676,7 @@ conditions:
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			runner, err := NewRulesRunnerFromLibrary[map[string]interface{}](library, "complex-tree", &tc.context)
+			runner, err := NewRulesRunnerFromLibrary(library, "complex-tree", &tc.context)
 			require.NoError(t, err)
 
 			_, err = runner.RunRules(&tc.context, nil)
@@ -697,24 +710,26 @@ conditions:
       action: "function() { context.result = 'small'; }"
       terminate: true
 `
-	library := createLibraryFromYAML(t, yamlRules, "large-context.yaml")
+	library, valResult := createLibraryFromYAML(t, yamlRules, "large-context.yaml")
+	assert.Empty(t, valResult.Errors)
+	assert.Empty(t, valResult.Warnings)
 
 	// Create initial empty context for runner creation
-	initContext := map[string]interface{}{}
-	runner, err := NewRulesRunnerFromLibrary[map[string]interface{}](library, "large-context", &initContext)
+	initContext := map[string]any{}
+	runner, err := NewRulesRunnerFromLibrary(library, "large-context", &initContext)
 	require.NoError(t, err)
 
 	// Create large context with 10,000 items
-	data := make([]map[string]interface{}, 10000)
+	data := make([]map[string]any, 10000)
 	for i := 0; i < 10000; i++ {
-		data[i] = map[string]interface{}{
+		data[i] = map[string]any{
 			"id":    i,
 			"value": i % 100,
 			"name":  fmt.Sprintf("item-%d", i),
 		}
 	}
 
-	context := map[string]interface{}{
+	context := map[string]any{
 		"data": data,
 	}
 

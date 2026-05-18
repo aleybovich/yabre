@@ -18,8 +18,9 @@ func TestRunnerBre(t *testing.T) {
 	breContext := &BreContext{RuleSet: "ruleset1"}
 	var debugMessage string
 
-	ruleLibrary, err := NewRulesLibrary(RulesLibrarySettings{BasePath: "./test/bre"})
+	ruleLibrary, valResult, err := NewRulesLibrary(RulesLibrarySettings{BasePath: "./test/bre"})
 	assert.NoError(t, err)
+	assertBREValidationWarnings(t, valResult)
 
 	runner, err := NewRulesRunnerFromLibrary(ruleLibrary, "main", breContext,
 		WithDebugCallback[BreContext](

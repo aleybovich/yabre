@@ -1,6 +1,6 @@
 module github.com/aleybovich/yabre
 
-go 1.24.4
+go 1.26.2
 
 require (
 	github.com/dop251/goja v0.0.0-20250309171923-bcd7cc6bf64c
