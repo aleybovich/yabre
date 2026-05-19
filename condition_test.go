@@ -104,7 +104,7 @@ func TestRunCondition_CheckFunctionNotFound(t *testing.T) {
 
 	condition := rules.Conditions["test"]
 	// Don't inject the function — it should fail to find it
-	err := runner.runCondition(vm, rules, &condition)
+	err := runner.runCondition(vm, rules, &condition, nil)
 
 	if err == nil {
 		t.Fatal("Expected error for missing check function")
@@ -136,7 +136,7 @@ func TestRunCondition_CheckFunctionExecutionError(t *testing.T) {
 	}
 
 	condition := rules.Conditions["test"]
-	err := runner.runCondition(vm, rules, &condition)
+	err := runner.runCondition(vm, rules, &condition, nil)
 
 	if err == nil {
 		t.Fatal("Expected error from check function")
@@ -175,7 +175,7 @@ func TestRunCondition_TrueBranchExecution(t *testing.T) {
 	}
 
 	condition := rules.Conditions["test"]
-	err := runner.runCondition(vm, rules, &condition)
+	err := runner.runCondition(vm, rules, &condition, nil)
 
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
@@ -214,7 +214,7 @@ func TestRunCondition_FalseBranchExecution(t *testing.T) {
 	}
 
 	condition := rules.Conditions["test"]
-	err := runner.runCondition(vm, rules, &condition)
+	err := runner.runCondition(vm, rules, &condition, nil)
 
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
@@ -245,7 +245,7 @@ func TestRunCondition_NullDecisionHandling(t *testing.T) {
 	}
 
 	condition := rules.Conditions["test"]
-	err := runner.runCondition(vm, rules, &condition)
+	err := runner.runCondition(vm, rules, &condition, nil)
 
 	if err != nil {
 		t.Fatalf("Expected no error for null decision, got: %v", err)
@@ -264,7 +264,7 @@ func TestRunAction_ActionFunctionNotFound(t *testing.T) {
 		Action: "function() { }",
 	}
 
-	err := runner.runAction(vm, rules, decision)
+	err := runner.runAction(vm, rules, decision, nil, nil)
 
 	if err == nil {
 		t.Fatal("Expected error for missing action function")
@@ -291,7 +291,7 @@ func TestRunAction_ActionFunctionExecutionError(t *testing.T) {
 		Action: "function() { throw 'action error'; }",
 	}
 
-	err := runner.runAction(vm, rules, decision)
+	err := runner.runAction(vm, rules, decision, nil, nil)
 
 	if err == nil {
 		t.Fatal("Expected error from action function")
@@ -315,7 +315,7 @@ func TestRunAction_NextConditionNotFound(t *testing.T) {
 		Next: "nonExistentCondition",
 	}
 
-	err := runner.runAction(vm, rules, decision)
+	err := runner.runAction(vm, rules, decision, nil, nil)
 
 	if err == nil {
 		t.Fatal("Expected error for missing next condition")
@@ -343,7 +343,7 @@ func TestRunAction_TerminateFlagBehavior(t *testing.T) {
 		Terminate: true,
 	}
 
-	err := runner.runAction(vm, rules, decision)
+	err := runner.runAction(vm, rules, decision, nil, nil)
 
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)

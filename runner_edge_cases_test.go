@@ -98,8 +98,11 @@ conditions:
 	_, valResult := createLibraryFromYAML(t, yamlRules, "circular-refs.yaml")
 	assert.Len(t, valResult.Errors, 2)
 	assert.Empty(t, valResult.Warnings)
-	assert.Contains(t, valResult.Errors[0].Message, "condition 'condition1' is reachable from itself")
-	assert.Contains(t, valResult.Errors[1].Message, "condition 'condition2' is reachable from itself")
+	// Map iteration order is non-deterministic, so check both errors are present
+	// regardless of order.
+	errMessages := valResult.Errors[0].Message + " " + valResult.Errors[1].Message
+	assert.Contains(t, errMessages, "condition 'condition1' is reachable from itself")
+	assert.Contains(t, errMessages, "condition 'condition2' is reachable from itself")
 }
 
 // Test JavaScript runtime errors
