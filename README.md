@@ -23,6 +23,7 @@ flowchart LR
 - Update the context during rule execution to store and manipulate data
 - Support for modular rule sets through a library system
 - Ability to organize rules across multiple files with dependencies
+- Structured execution trace for audit trails, debugging, and performance profiling
 
 ## Usage
 
@@ -512,6 +513,68 @@ The decision callback is invoked at various points during rule execution, such a
 By utilizing the decision callback, you can gain visibility into the decision-making process of the rules engine, track the flow of execution, monitor and analyze the behavior of your business rules engine, and understand and optimize the decision-making process, which can be particularly useful for debugging, auditing, or monitoring purposes.
 
 Please note that the decision callback is an optional feature, and you can choose to omit it if you don't require detailed insights into the rule execution process.
+
+## Structured Execution Trace
+
+For machine-readable audit trails and rule debugging, the engine provides `RunRulesWithTrace` which returns a `[]TraceEntry` alongside the updated context. Each entry records what happened at a single condition evaluation step:
+
+```go
+type TraceEntry struct {
+    ConditionName string        // YAML key of the condition
+    Description   string        // Human-readable description
+    Result        bool          // true/false outcome of the check
+    HasAction     bool          // Whether the matched branch has an action defined
+    NextCondition string        // Name of the next condition (empty if terminated)
+    Terminated    bool          // Whether execution terminated at this step
+    Duration      time.Duration // Wall-clock time for check + action (excludes downstream chain)
+    Error         error         // Any error that occurred at this step
+}
+```
+
+### Usage
+
+```go
+ctx, trace, err := runner.RunRulesWithTrace(&context, nil)
+if err != nil {
+    // Handle error — trace still contains entries up to the point of failure
+}
+
+for _, entry := range trace {
+    fmt.Printf("[%s] result=%t action=%t duration=%v\n",
+        entry.ConditionName, entry.Result, entry.HasAction, entry.Duration)
+}
+```
+
+### Example Output
+
+For a loan approval that passes all checks:
+
+```
+[check_primary_applicant]    result=true  action=false  next=check_applicant_age         duration=42µs
+[check_applicant_age]        result=true  action=false  next=check_applicant_income      duration=38µs
+[check_applicant_income]     result=true  action=false  next=check_applicant_credit      duration=35µs
+[check_applicant_credit]     result=true  action=false  next=check_co_applicant          duration=33µs
+[check_co_applicant]         result=true  action=false  next=check_debt_to_income_ratio  duration=31µs
+[check_debt_to_income_ratio] result=true  action=false  next=check_loan_amount           duration=40µs
+[check_loan_amount]          result=true  action=true   terminated                       duration=45µs
+```
+
+Note: `HasAction` is `true` only when the matched branch has an `action:` defined in the YAML. Most routing conditions only specify `next:` with no action, so `HasAction` is `false` for those.
+
+### Use Cases
+
+- **Compliance audit logs** — answer "why was this application rejected?" with a structured record
+- **Rule debugging** — inspect the exact execution path without adding callbacks
+- **Performance profiling** — identify slow conditions via the `Duration` field
+- **Test assertions** — assert on the exact trace path in unit tests
+
+### Coexistence with Decision Callback
+
+`RunRulesWithTrace` works alongside `WithDecisionCallback`. Both fire independently — the callback emits formatted strings while the trace captures structured data.
+
+### Thread Safety
+
+`RunRulesWithTrace` is safe for concurrent use on the same `RulesRunner`. Each call allocates its own internal trace collector, so concurrent goroutines never share trace state.
 
 
 ## Generating Mermaid Flowcharts

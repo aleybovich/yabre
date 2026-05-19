@@ -3,6 +3,7 @@ package yabre
 import (
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/dop251/goja"
 )
@@ -53,47 +54,122 @@ func (cr *Decision) UnmarshalYAML(unmarshal func(any) error) error {
 	return nil
 }
 
-// Run the conditions recursively
-func (runner *RulesRunner[Context]) runCondition(vm *goja.Runtime, rules *Rules, condition *Condition) error {
+// runCondition runs the conditions recursively. tc may be nil (RunRules path); when
+// non-nil a TraceEntry is appended for every condition that is evaluated.
+func (runner *RulesRunner[Context]) runCondition(vm *goja.Runtime, rules *Rules, condition *Condition, tc *traceCollector) error {
 	runner.decisionCallback("Evaluating condition: [%s] %s", condition.Name, condition.Description)
 
-	// Evaluate the check function
+	// Reserve a slot in the trace BEFORE evaluating the check so that
+	// entries remain in chronological order even after recursive calls.
+	var slotIdx int
+	var checkStart time.Time
+	if tc != nil {
+		slotIdx = len(tc.entries)
+		tc.entries = append(tc.entries, TraceEntry{
+			ConditionName: condition.Name,
+			Description:   condition.Description,
+		})
+		checkStart = time.Now()
+	}
+
+	// Evaluate the check function.
 	funcName := conditionCheckFuncName(condition.Name)
 	checkFunc, ok := goja.AssertFunction(vm.Get(funcName))
 	if !ok {
-		return fmt.Errorf("check function not found: %s", funcName)
+		err := fmt.Errorf("check function not found: %s", funcName)
+		if tc != nil {
+			tc.entries[slotIdx].Duration = time.Since(checkStart)
+			tc.entries[slotIdx].Error = err
+		}
+		return err
 	}
 	checkResult, err := checkFunc(goja.Undefined())
-	if err != nil {
-		return fmt.Errorf("error evaluating check function %s: %w", funcName, err)
+
+	var checkDuration time.Duration
+	if tc != nil {
+		checkDuration = time.Since(checkStart)
 	}
 
-	if checkResult.ToBoolean() {
-		runner.decisionCallback("Condition [%s] evaluated to [true]", condition.Name)
-		if condition.True == nil {
-			runner.decisionCallback("No action or next condition defined, terminating")
-			return nil
+	if err != nil {
+		err = fmt.Errorf("error evaluating check function %s: %w", funcName, err)
+		if tc != nil {
+			tc.entries[slotIdx].Duration = checkDuration
+			tc.entries[slotIdx].Error = err
 		}
-		return runner.runAction(vm, rules, condition.True)
+		return err
+	}
+
+	result := checkResult.ToBoolean()
+
+	var decision *Decision
+	if result {
+		runner.decisionCallback("Condition [%s] evaluated to [true]", condition.Name)
+		decision = condition.True
 	} else {
 		runner.decisionCallback("Condition [%s] evaluated to [false]", condition.Name)
-		if condition.False == nil {
-			runner.decisionCallback("No action or next condition defined, terminating")
-			return nil
-		}
-		return runner.runAction(vm, rules, condition.False)
+		decision = condition.False
 	}
+
+	if decision == nil {
+		runner.decisionCallback("No action or next condition defined, terminating")
+		if tc != nil {
+			tc.entries[slotIdx].Result = result
+			tc.entries[slotIdx].Terminated = true
+			tc.entries[slotIdx].Duration = checkDuration
+		}
+		return nil
+	}
+
+	// Pre-fill the trace fields that are known from the Decision struct before
+	// running the action/next-condition chain. These are set regardless of
+	// whether the action or downstream conditions later fail.
+	if tc != nil {
+		tc.entries[slotIdx].Result = result
+		tc.entries[slotIdx].HasAction = decision.Action != ""
+		tc.entries[slotIdx].NextCondition = decision.Next
+		tc.entries[slotIdx].Terminated = decision.Terminate
+	}
+
+	// actionDuration captures only the wall-clock time of the direct action
+	// for this condition (not the entire downstream chain).
+	var actionDuration time.Duration
+	var actionDurationPtr *time.Duration
+	if tc != nil {
+		actionDurationPtr = &actionDuration
+	}
+
+	err = runner.runAction(vm, rules, decision, tc, actionDurationPtr)
+
+	if tc != nil {
+		tc.entries[slotIdx].Duration = checkDuration + actionDuration
+		tc.entries[slotIdx].Error = err
+	}
+
+	return err
 }
 
-// Helper function to run the action
-func (runner *RulesRunner[Context]) runAction(vm *goja.Runtime, rules *Rules, result *Decision) error {
+// runAction runs the branch action (if any) and then recurses into the next condition.
+// tc may be nil. actionDuration, when non-nil, receives the wall-clock time spent
+// executing the direct action function only (not downstream conditions).
+func (runner *RulesRunner[Context]) runAction(vm *goja.Runtime, rules *Rules, result *Decision, tc *traceCollector, actionDuration *time.Duration) error {
 	if result.Action != "" {
 		runner.decisionCallback("Running action: [%s] %s", result.Name, result.Description)
 		actionFunc, ok := goja.AssertFunction(vm.Get(result.Name))
 		if !ok {
 			return fmt.Errorf("action function not found: %s", result.Name)
 		}
+
+		var actionStart time.Time
+		if actionDuration != nil {
+			actionStart = time.Now()
+		}
+
 		_, err := actionFunc(goja.Undefined())
+
+		if actionDuration != nil {
+			*actionDuration = time.Since(actionStart)
+		}
+
 		if err != nil {
 			return fmt.Errorf("error running action: %w", err)
 		}
@@ -105,7 +181,7 @@ func (runner *RulesRunner[Context]) runAction(vm *goja.Runtime, rules *Rules, re
 			return fmt.Errorf("unexpected error: condition '%s' not found", result.Next)
 		}
 		runner.decisionCallback("Moving to next condition:[%s]", nextCondition.Name)
-		err = runner.runCondition(vm, rules, nextCondition)
+		err = runner.runCondition(vm, rules, nextCondition, tc)
 		if err != nil {
 			return fmt.Errorf("error while evaluating condition '%s': %w", result.Next, err)
 		}

@@ -84,15 +84,38 @@ func NewRulesRunnerFromLibrary[Context any](
 }
 
 func (rr *RulesRunner[Context]) RunRules(context *Context, startCondition *Condition) (*Context, error) {
+	ctx, _, err := rr.executeRules(context, startCondition, nil)
+	return ctx, err
+}
+
+// RunRulesWithTrace executes the rule set identically to RunRules but also
+// returns a []TraceEntry that records every condition evaluation in chronological
+// order. Each entry captures the condition name, description, check result,
+// whether an action ran, the next condition name, termination flag, the
+// wall-clock duration for that condition's check + direct action, and any error.
+//
+// Because the traceCollector is allocated per call and never stored on the
+// runner, concurrent calls are safe.
+func (rr *RulesRunner[Context]) RunRulesWithTrace(context *Context, startCondition *Condition) (*Context, []TraceEntry, error) {
+	tc := &traceCollector{}
+	ctx, trace, err := rr.executeRules(context, startCondition, tc)
+	return ctx, trace, err
+}
+
+// executeRules is the shared implementation for RunRules and RunRulesWithTrace.
+// When tc is nil, no tracing overhead is incurred.
+func (rr *RulesRunner[Context]) executeRules(context *Context, startCondition *Condition, tc *traceCollector) (*Context, []TraceEntry, error) {
 	rules := rr.Rules
 	vm := goja.New()
 
 	// Add context to vm
 	vm.Set("context", *context)
 
-	// Add debug function to vm
+	// Add debug function to vm (always inject so JS code can call debug() without error)
 	if rr.debugCallback != nil {
 		vm.Set("debug", rr.debugCallback)
+	} else {
+		vm.Set("debug", func(...any) {})
 	}
 
 	// Add go functions to vm
@@ -105,7 +128,7 @@ func (rr *RulesRunner[Context]) RunRules(context *Context, startCondition *Condi
 	// Add all js functions to the vm
 	err := rr.addJsFunctions(vm)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	if startCondition == nil {
@@ -113,14 +136,19 @@ func (rr *RulesRunner[Context]) RunRules(context *Context, startCondition *Condi
 	}
 
 	if startCondition == nil && rules.DefaultCondition == nil {
-		return nil, fmt.Errorf("no default condition found")
+		return nil, nil, fmt.Errorf("no default condition found")
 	}
 
 	// Start running the conditions from the first condition
-	err = rr.runCondition(vm, rules, startCondition)
+	err = rr.runCondition(vm, rules, startCondition, tc)
 
 	// Get the updated context
 	*context = vm.Get("context").ToObject(vm).Export().(Context)
 
-	return context, err
+	var entries []TraceEntry
+	if tc != nil {
+		entries = tc.entries
+	}
+
+	return context, entries, err
 }

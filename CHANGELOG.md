@@ -1,5 +1,9 @@
 Changelog
 
+[0.9.1]
+- Added: `RunRulesWithTrace` method — returns a `[]TraceEntry` recording every condition evaluation in chronological order (condition name, description, check result, action ran, next condition, terminated, duration, error)
+- Added: Comprehensive trace tests covering chained conditions, multi-level rulesets, concurrency, error paths, and coexistence with `WithDecisionCallback`
+
 [0.9.0]
 - Added: library validation on load - detects circular dependencies, dangling `next` references, and unreachable conditions
 - Added: Rule set caching in `RulesLibrary` — all YAML files are parsed once at init, no filesystem access after library construction
