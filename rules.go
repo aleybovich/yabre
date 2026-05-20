@@ -31,14 +31,37 @@ func (r *Rules) UnmarshalYAML(unmarshal func(any) error) error {
 	for name, condition := range rr.Conditions {
 		condition.Name = name
 
-		if condition.True != nil {
-			condition.True.Name = decisionActionFuncName(condition.Name, true)
-			condition.True.Value = true
-		}
+		// Validate and enrich based on condition type
+		switch {
+		case condition.IsSwitch():
+			// Switch conditions: reject true/false branches, enrich cases
+			if condition.True != nil || condition.False != nil {
+				return fmt.Errorf("condition '%s': switch conditions must not have 'true' or 'false' branches", name)
+			}
+			for key, sc := range condition.Cases {
+				if sc == nil {
+					return fmt.Errorf("condition '%s': switch case '%s' is empty (null); define at least 'terminate: true' or 'next'", name, key)
+				}
+				sc.Name = switchCaseActionFuncName(condition.Name, key)
+				sc.CaseKey = key
+			}
 
-		if condition.False != nil {
-			condition.False.Name = decisionActionFuncName(condition.Name, false)
-			condition.False.Value = false
+		case condition.IsBool():
+			// Bool conditions: reject cases map
+			if len(condition.Cases) > 0 {
+				return fmt.Errorf("condition '%s': 'cases' is only valid on switch conditions (set type: switch)", name)
+			}
+			if condition.True != nil {
+				condition.True.Name = decisionActionFuncName(condition.Name, true)
+				condition.True.Value = true
+			}
+			if condition.False != nil {
+				condition.False.Name = decisionActionFuncName(condition.Name, false)
+				condition.False.Value = false
+			}
+
+		default:
+			return fmt.Errorf("condition '%s': unknown condition type '%s'", name, condition.Type)
 		}
 
 		rr.Conditions[name] = condition
@@ -95,6 +118,14 @@ func (runner *RulesRunner[Context]) addJsFunctions(vm *goja.Runtime) error {
 		if condition.False != nil && condition.False.Action != "" {
 			if err := injectJSFunction(vm, condition.False.Name, condition.False.Action); err != nil {
 				return fmt.Errorf("error injecting action function into vm: %w", err)
+			}
+		}
+		// Inject switch case action functions
+		for _, sc := range condition.Cases {
+			if sc.Action != "" {
+				if err := injectJSFunction(vm, sc.Name, sc.Action); err != nil {
+					return fmt.Errorf("error injecting switch case action function into vm: %w", err)
+				}
 			}
 		}
 	}

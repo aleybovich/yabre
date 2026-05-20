@@ -9,7 +9,11 @@ type TraceEntry struct {
 	// Description is the condition's human-readable description.
 	Description string
 	// Result is the boolean outcome of the condition's check function.
+	// For switch conditions this is always false; use SwitchResult instead.
 	Result bool
+	// SwitchResult is the string outcome of a switch condition's check function.
+	// Empty for binary (bool) conditions.
+	SwitchResult string
 	// HasAction indicates whether the matched branch has an action defined.
 	HasAction bool
 	// NextCondition is the name of the condition that was chained after this one,

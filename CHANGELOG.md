@@ -1,5 +1,8 @@
 Changelog
 
+[0.10.0]
+- Added: Switch conditions (`type: switch`) for multi-value branching — check functions return a string and execution branches based on matching case keys
+
 [0.9.1]
 - Added: `RunRulesWithTrace` method — returns a `[]TraceEntry` recording every condition evaluation in chronological order (condition name, description, check result, action ran, next condition, terminated, duration, error)
 - Added: Comprehensive trace tests covering chained conditions, multi-level rulesets, concurrency, error paths, and coexistence with `WithDecisionCallback`

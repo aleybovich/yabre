@@ -74,6 +74,9 @@ func ValidateRules(rules *Rules) []ValidationIssue {
 	// Check for unreachable conditions
 	issues = append(issues, detectUnreachableConditions(rules)...)
 
+	// Check switch condition semantics
+	issues = append(issues, validateSwitchConditions(rules)...)
+
 	return issues
 }
 
@@ -139,6 +142,15 @@ func walkCondition(rules *Rules, conditionName string, path map[string]bool) *Va
 		}
 	}
 
+	// Follow switch case branches
+	for _, sc := range condition.Cases {
+		if sc.Next != "" {
+			if issue := walkCondition(rules, sc.Next, path); issue != nil {
+				return issue
+			}
+		}
+	}
+
 	delete(path, conditionName)
 	return nil
 }
@@ -166,6 +178,18 @@ func detectDanglingReferences(rules *Rules) []ValidationIssue {
 				})
 			}
 		}
+		// Check switch case next references
+		for key, sc := range condition.Cases {
+			if sc.Next != "" {
+				if _, ok := rules.Conditions[sc.Next]; !ok {
+					issues = append(issues, ValidationIssue{
+						Severity:      SeverityError,
+						ConditionName: name,
+						Message:       fmt.Sprintf("switch case '%s' references non-existent condition '%s'", key, sc.Next),
+					})
+				}
+			}
+		}
 	}
 
 	return issues
@@ -190,6 +214,12 @@ func detectUnreachableConditions(rules *Rules) []ValidationIssue {
 		}
 		if condition.False != nil && condition.False.Next != "" {
 			referenced[condition.False.Next] = true
+		}
+		// Include switch case next references
+		for _, sc := range condition.Cases {
+			if sc.Next != "" {
+				referenced[sc.Next] = true
+			}
 		}
 	}
 
@@ -261,6 +291,75 @@ func (rl *RulesLibrary) walkRequireDeps(name string, path map[string]bool, chain
 
 	delete(path, name)
 	return nil
+}
+
+// validateSwitchConditions checks switch-specific semantics.
+func validateSwitchConditions(rules *Rules) []ValidationIssue {
+	var issues []ValidationIssue
+
+	for name, condition := range rules.Conditions {
+		// Check for unknown type values
+		if condition.Type != "" && condition.Type != ConditionTypeBool && condition.Type != ConditionTypeSwitch {
+			issues = append(issues, ValidationIssue{
+				Severity:      SeverityError,
+				ConditionName: name,
+				Message:       fmt.Sprintf("unknown condition type '%s' (valid values: '%s', '%s')", condition.Type, ConditionTypeBool, ConditionTypeSwitch),
+			})
+			continue
+		}
+
+		if condition.IsSwitch() {
+			// Switch conditions must not have true/false branches
+			if condition.True != nil || condition.False != nil {
+				issues = append(issues, ValidationIssue{
+					Severity:      SeverityError,
+					ConditionName: name,
+					Message:       "switch condition must not have 'true' or 'false' branches",
+				})
+			}
+			// Switch conditions must have at least one case
+			if len(condition.Cases) == 0 {
+				issues = append(issues, ValidationIssue{
+					Severity:      SeverityError,
+					ConditionName: name,
+					Message:       "switch condition must have at least one case",
+				})
+			}
+			// Warn if no default case
+			if _, hasDefault := condition.Cases["default"]; !hasDefault {
+				issues = append(issues, ValidationIssue{
+					Severity:      SeverityWarning,
+					ConditionName: name,
+					Message:       "switch condition has no 'default' case; unmatched values will terminate silently",
+				})
+			}
+			// Check for colliding sanitized case keys
+			sanitizedKeys := make(map[string]string) // sanitized → original key
+			for key := range condition.Cases {
+				sanitized := sanitizeJSIdentifier(key)
+				if existing, collision := sanitizedKeys[sanitized]; collision {
+					issues = append(issues, ValidationIssue{
+						Severity:      SeverityError,
+						ConditionName: name,
+						Message:       fmt.Sprintf("switch case keys '%s' and '%s' collide after sanitization (both become '%s')", existing, key, sanitized),
+					})
+				} else {
+					sanitizedKeys[sanitized] = key
+				}
+			}
+		} else {
+			// Non-switch conditions must not have cases
+			if len(condition.Cases) > 0 {
+				issues = append(issues, ValidationIssue{
+					Severity:      SeverityError,
+					ConditionName: name,
+					Message:       "'cases' is only valid on switch conditions (set type: switch)",
+				})
+			}
+		}
+	}
+
+	return issues
 }
 
 func formatCyclePath(path []string) string {

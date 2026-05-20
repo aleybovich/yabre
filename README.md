@@ -17,6 +17,7 @@ flowchart LR
 
 - Define flexible business rules using a declarative YAML syntax and javascript
 - Execute rules based on specified conditions and actions
+- Multi-value branching (switch conditions) for routing based on string outcomes
 - Inject custom Go functions to extend the functionality of the rules engine
 - Provide a debug callback function to log and monitor the execution of rules
 - Terminate rule execution based on specific conditions
@@ -293,6 +294,60 @@ conditions:
   - `terminate`: (Optional) Set to `true` to terminate rule execution after executing the action. Cannot be used together with `next`.
 - `false`: The action to perform if the condition evaluates to `false`. It follows the same structure as `true`.
 
+### Switch Conditions (Multi-Value Branching)
+
+In addition to binary (true/false) conditions, you can define switch conditions that branch based on a string return value. This is useful when a condition has more than two possible outcomes (e.g., routing by risk tier, product type, or status code).
+
+Set `type: switch` on the condition. The `check` function returns a string, and the `cases` map defines the branches:
+
+```yaml
+conditions:
+  classify_risk:
+    type: switch
+    default: true
+    description: Classify loan risk tier
+    check: |
+      function() {
+        const score = context.CreditScore;
+        if (score >= 750) return "low";
+        if (score >= 650) return "medium";
+        if (score >= 550) return "high";
+        return "critical";
+      }
+    cases:
+      low:
+        description: Low risk - approve immediately
+        action: |
+          function() { context.Decision = "approved"; context.Rate = 0.04; }
+        terminate: true
+      medium:
+        description: Medium risk - standard review
+        next: standard_review
+      high:
+        description: High risk - enhanced review
+        next: enhanced_review
+      critical:
+        description: Critical risk - reject
+        action: |
+          function() { context.Decision = "rejected"; context.Reason = "Critical risk"; }
+        terminate: true
+      default:
+        description: Unrecognised tier
+        terminate: true
+```
+
+**Key rules for switch conditions:**
+
+- `type: switch` is required to activate multi-value branching
+- The `check` function must return a string value
+- Each key in `cases` maps to a branch (same semantics as binary `true`/`false` branches: `action`, `next`, `terminate`)
+- The literal key `"default"` is the fallback when no other case matches
+- If no case matches and there is no `default` case, execution terminates silently
+- `true` and `false` branches are not allowed on switch conditions
+- Validation warns when no `default` case is defined
+
+Switch conditions work seamlessly with execution traces (`RunRulesWithTrace`), Mermaid export, and all validation checks (cycle detection, dangling references, unreachable conditions).
+
 ### Naming Conventions
 
 Condition name should be lowercase alphanumeric symbols and `_` only. Ex. `weight_greater_500`
@@ -522,7 +577,8 @@ For machine-readable audit trails and rule debugging, the engine provides `RunRu
 type TraceEntry struct {
     ConditionName string        // YAML key of the condition
     Description   string        // Human-readable description
-    Result        bool          // true/false outcome of the check
+    Result        bool          // true/false outcome of the check (for binary conditions)
+    SwitchResult  string        // String outcome for switch conditions (empty for binary)
     HasAction     bool          // Whether the matched branch has an action defined
     NextCondition string        // Name of the next condition (empty if terminated)
     Terminated    bool          // Whether execution terminated at this step

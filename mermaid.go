@@ -56,6 +56,16 @@ func ExportMermaid(yamlString []byte, defaultConditionName string) (string, erro
 				fmt.Fprintf(&mermaid, "    %s_false_end((( )))\n", condition.Name)
 			}
 		}
+
+		// Declare switch case elements
+		for _, sc := range condition.Cases {
+			if sc.Action != "" {
+				fmt.Fprintf(&mermaid, "    %s[\"`%s`\"]\n", sc.Name, escape(ifEmpty(sc.Description, sc.Name)))
+			}
+			if sc.Terminate {
+				fmt.Fprintf(&mermaid, "    %s_end((( )))\n", sc.Name)
+			}
+		}
 	}
 
 	for _, condition := range rules.Conditions {
@@ -73,8 +83,38 @@ func renderCondition(condition *Condition, mermaid *strings.Builder) error {
 	if condition.False != nil {
 		renderDecision(condition, condition.False, mermaid)
 	}
+	// Render switch case edges
+	for _, sc := range condition.Cases {
+		renderSwitchCase(condition, sc, mermaid)
+	}
 
 	return nil
+}
+
+func renderSwitchCase(condition *Condition, sc *SwitchCase, mermaid *strings.Builder) {
+	label := escapeEdgeLabel(sc.CaseKey)
+
+	if sc.Action != "" {
+		// Connection from condition to case action node
+		fmt.Fprintf(mermaid, "    %s --> |%s| %s\n", condition.Name, label, sc.Name)
+		if sc.Next != "" {
+			// Connection from case action to next condition
+			fmt.Fprintf(mermaid, "    %s --> %s\n", sc.Name, sc.Next)
+		}
+		if sc.Terminate {
+			// Terminator from case action
+			fmt.Fprintf(mermaid, "    %s --> %s_end\n", sc.Name, sc.Name)
+		}
+	} else {
+		if sc.Next != "" {
+			// Direct connection from condition to next condition
+			fmt.Fprintf(mermaid, "    %s --> |%s| %s\n", condition.Name, label, sc.Next)
+		}
+		if sc.Terminate {
+			// Terminator from condition
+			fmt.Fprintf(mermaid, "    %s --> |%s| %s_end\n", condition.Name, label, sc.Name)
+		}
+	}
 }
 
 func renderDecision(
@@ -118,4 +158,13 @@ func ifEmpty(first, second string) string {
 
 func escape(s string) string {
 	return strings.ReplaceAll(s, "\"", "&quot")
+}
+
+// escapeEdgeLabel sanitizes a string for use inside Mermaid edge labels (|...|).
+// Pipes, quotes, and backticks are replaced with safe alternatives.
+func escapeEdgeLabel(s string) string {
+	s = strings.ReplaceAll(s, "|", "&#124;")
+	s = strings.ReplaceAll(s, "\"", "&quot;")
+	s = strings.ReplaceAll(s, "`", "&#96;")
+	return s
 }

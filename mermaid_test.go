@@ -19,6 +19,39 @@ func TestMermaid(t *testing.T) {
 	fmt.Println(mmd)
 }
 
+func TestMermaid_SwitchCaseKeyEscaping(t *testing.T) {
+	yamlData := []byte(`
+name: escape-test
+conditions:
+  route:
+    type: switch
+    default: true
+    description: Route by type
+    check: |
+      function() { return "a|b"; }
+    cases:
+      'a|b':
+        description: Pipe case
+        action: |
+          function() { context.Route = "piped"; }
+        terminate: true
+      'say "hello"':
+        description: Quote case
+        terminate: true
+      default:
+        terminate: true
+`)
+	mmd, err := ExportMermaid(yamlData, "")
+	assert.NoError(t, err)
+
+	// Pipes should be escaped as HTML entities
+	assert.Contains(t, mmd, "&#124;")
+	assert.NotContains(t, mmd, "|a|b|")
+
+	// Quotes should be escaped
+	assert.Contains(t, mmd, "&quot;")
+}
+
 func TestExportMermaidFromLibrary(t *testing.T) {
 	// Create a rules library from test data
 	rl, valResult, err := NewRulesLibrary(RulesLibrarySettings{
